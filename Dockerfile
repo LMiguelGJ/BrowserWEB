@@ -1,23 +1,26 @@
-# Dockerfile CORREGIDO para Sevalla
-# Configuración específica para la plataforma Sevalla
-FROM browserless/chrome:1-chrome-stable
+# Dockerfile ALTERNATIVO para Sevalla
+# Usa puerto estándar de Browserless con configuración robusta
+FROM browserless/chrome:latest
 
-# Variables de entorno para Sevalla
-ENV CONCURRENT=1
-ENV TIMEOUT=30000
+# Variables de entorno robustas
+ENV CONCURRENT=2
+ENV TIMEOUT=60000
 ENV KEEP_ALIVE=true
 ENV ENABLE_CORS=true
 ENV HOST=0.0.0.0
-ENV PORT=8080
+ENV PORT=3000
 
-# Configuraciones adicionales
+# Configuraciones para estabilidad
 ENV PREBOOT_CHROME=true
 ENV DEMO_MODE=false
-ENV MAX_PAYLOAD_SIZE=30000000
+ENV MAX_PAYLOAD_SIZE=50000000
+ENV ENABLE_HEAP_DUMP=false
+ENV ENABLE_DEBUG_VIEWER=false
 
-# Puerto que espera Sevalla
-EXPOSE 8080
+# Configuraciones de Chrome
+ENV CHROME_ARGS="--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage,--disable-gpu"
 
-# Healthcheck para verificar que el servicio está listo
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD curl -f http://localhost:8080/ || exit 1
+EXPOSE 3000
+
+# Comando de inicio explícito
+CMD ["node", "build/index.js"]
