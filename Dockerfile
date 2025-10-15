@@ -1,8 +1,5 @@
-# Usa browserless como base
-FROM browserless/chrome:latest
+FROM dorowu/ubuntu-desktop-lxde-vnc
 
-# Por defecto expone el puerto 3000
-EXPOSE 3000
+EXPOSE 80
 
-# Entrypoint estándar
-CMD ["--port=3000"]
+CMD ["--tail-log"]
