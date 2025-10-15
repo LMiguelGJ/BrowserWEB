@@ -1,15 +1,8 @@
-# Usa la imagen Firefox con interfaz web
-FROM jlesage/firefox
+# Dockerfile
+FROM ghcr.io/browserless/chromium:latest
 
-# Ejecuta como usuario no root (corrige permisos en plataformas seguras)
-ENV USER_ID=1000
-ENV GROUP_ID=1000
+ENV MAX_CONCURRENT_SESSIONS=1
+ENV CONNECTION_TIMEOUT=30000
+ENV PREBOOT_CHROME=true
 
-# Desactiva necesidad de privilegios extra
-ENV ENABLE_CJK_FONT=1
-ENV DISPLAY=:0
-
-EXPOSE 5800
-
-# No requiere CMD, pero lo agregamos por compatibilidad
-CMD ["/init"]
+EXPOSE 3000
