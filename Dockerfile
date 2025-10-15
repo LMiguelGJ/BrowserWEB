@@ -1,10 +1,12 @@
-# Dockerfile MINIMALISTA para Sevalla
-# Solo configuraciones esenciales
-FROM browserless/chrome:1-chrome-stable
+# Dockerfile corregido para tu setup actual
+FROM ghcr.io/browserless/chromium:latest
 
-# Solo las variables ESENCIALES
-ENV PORT=8080
+ENV CONCURRENT=1                   
+ENV TIMEOUT=30000                  
+ENV KEEP_ALIVE=true                
+ENV ENABLE_CORS=true
+ENV ENABLE_API_GET=true
 ENV HOST=0.0.0.0
+ENV PORT=3000
 
-# Puerto para Sevalla
-EXPOSE 8080
+EXPOSE 3000
