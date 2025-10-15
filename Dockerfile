@@ -1,11 +1,7 @@
-FROM browserless/chromium:latest
+FROM jlesage/firefox
 
-# Configurar modo gratuito básico
-ENV MAX_CONCURRENT_SESSIONS=1
-ENV CONNECTION_TIMEOUT=30000
-ENV ENABLE_DEBUGGER=false
-ENV PREBOOT_CHROME=true
+ENV USER_ID=0
+ENV GROUP_ID=0
+EXPOSE 5800
 
-EXPOSE 3000
-
-CMD ["node", "build/index.js"]
+CMD ["/init"]
