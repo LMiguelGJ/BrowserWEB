@@ -1,11 +1,13 @@
 FROM dorowu/ubuntu-desktop-lxde-vnc:latest
 
-# Exponer el puerto web VNC
-EXPOSE 80
+# Expone el puerto 8080 (Sevalla suele mapear tráfico web aquí)
+EXPOSE 8080
 
-# Opcional: Cambia la resolución si lo necesitas
+# Redirige el tráfico del puerto 8080 al 80 dentro del contenedor
+RUN apt-get update && apt-get install -y socat && \
+    socat TCP-LISTEN:8080,fork TCP:127.0.0.1:80 &
+
 ENV DISPLAY_WIDTH=1280
 ENV DISPLAY_HEIGHT=800
 
-# Lanzar el entorno gráfico
 CMD ["/startup.sh"]
