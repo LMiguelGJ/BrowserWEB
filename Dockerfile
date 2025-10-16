@@ -16,5 +16,5 @@ WORKDIR /app
 # Exponer puerto 8080 para Sevalla
 EXPOSE 8080
 
-# Comando en formato JSON (evita warning) con single-process
-CMD ["sh", "-c", "chromium-browser --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --disable-features=ChromeBrowserCloudManagement --single-process --remote-debugging-address=0.0.0.0 --remote-debugging-port=${PORT}"]
+# Comando en formato JSON con flags para múltiples conexiones
+CMD ["sh", "-c", "chromium-browser --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --disable-features=ChromeBrowserCloudManagement --disable-web-security --disable-features=VizDisplayCompositor --enable-logging --log-level=0 --remote-debugging-address=0.0.0.0 --remote-debugging-port=${PORT}"]
