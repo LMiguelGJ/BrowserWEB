@@ -1,20 +1,15 @@
-# Dockerfile simplificado para Sevalla (puerto 8080)
-FROM zenika/alpine-chrome:latest
-
-# Variables básicas para suprimir errores D-Bus
-ENV NO_AT_BRIDGE=1
-ENV DBUS_SESSION_BUS_ADDRESS=""
-ENV DISPLAY=""
+# Dockerfile mínimo para PhantomJS en Sevalla (puerto 8080)
+FROM wernight/phantomjs:latest
 
 # Puerto dinámico para Sevalla
 ENV PORT=8080
 
-# Usuario no-root
-USER chrome
+# Directorio de trabajo (opcional)
 WORKDIR /app
 
-# Exponer puerto 8080 para Sevalla
+# Exponer puerto 8080
 EXPOSE 8080
 
-# Comando en formato JSON con flags para múltiples conexiones
-CMD ["sh", "-c", "chromium-browser --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --disable-features=ChromeBrowserCloudManagement --disable-web-security --disable-features=VizDisplayCompositor --enable-logging --log-level=0 --remote-debugging-address=0.0.0.0 --remote-debugging-port=${PORT}"]
+# Iniciar PhantomJS WebDriver escuchando en 0.0.0.0:PORT
+# Nota: usamos shell para expandir ${PORT}
+CMD ["sh", "-c", "phantomjs --webdriver=0.0.0.0:${PORT} --webdriver-loglevel=INFO"]
