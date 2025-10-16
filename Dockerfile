@@ -11,6 +11,15 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 # Optimización de memoria para Node.js (si se usa)
 ENV NODE_OPTIONS="--max-old-space-size=256"
 
+# Suprime intentos de acceso a D-Bus/AT-SPI (evita logs y dependencias opcionales)
+ENV NO_AT_BRIDGE=1
+# Fuerza a Chrome a no usar variables heredadas de D-Bus en el contenedor
+ENV DBUS_SESSION_BUS_ADDRESS=
+ENV DBUS_SYSTEM_BUS_ADDRESS=
+# Define un runtime dir explícito para procesos sandbox sin D-Bus
+ENV XDG_RUNTIME_DIR=/tmp/runtime-chrome
+RUN mkdir -p /tmp/runtime-chrome && chown -R chrome:chrome /tmp/runtime-chrome
+
 # Flags de Chrome optimizados para recursos limitados
 ENV CHROME_FLAGS="\
 --headless=new \
@@ -23,21 +32,20 @@ ENV CHROME_FLAGS="\
 --disable-background-timer-throttling \
 --disable-renderer-backgrounding \
 --disable-backgrounding-occluded-windows \
---disable-features=TranslateUI \
+--disable-features=TranslateUI,ChromeBrowserCloudManagement \
 --disable-ipc-flooding-protection \
 --memory-pressure-off \
 --max_old_space_size=256 \
 --aggressive-cache-discard \
 --disable-web-security \
 --disable-features=VizDisplayCompositor \
---disable-background-networking \
 --disable-sync \
 --disable-default-apps \
---disable-extensions \
 --disable-translate \
 --hide-scrollbars \
 --mute-audio \
 --no-first-run \
+--password-store=basic \
 --safebrowsing-disable-auto-update \
 --disable-client-side-phishing-detection \
 --disable-component-update \
@@ -68,6 +76,8 @@ CMD ["chromium-browser", \
      "--memory-pressure-off", \
      "--max_old_space_size=256", \
      "--aggressive-cache-discard", \
+     "--password-store=basic", \
      "--window-size=1280,720", \
+     "--disable-features=ChromeBrowserCloudManagement", \
      "--remote-debugging-address=0.0.0.0", \
      "--remote-debugging-port=9222"]
