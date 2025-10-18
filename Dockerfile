@@ -1,16 +1,23 @@
+FROM alpine:latest
 
-FROM alpine:3.20
+RUN apk add --no-cache tinyproxy curl busybox-extras
 
-# Instala curl y certificados para HTTPS confiable
-RUN apk add --no-cache curl ca-certificates \
-    && update-ca-certificates
+# Configurar Tinyproxy
+RUN echo "\
+Port 8080\n\
+Listen 0.0.0.0\n\
+Timeout 600\n\
+MaxClients 20\n\
+Allow 0.0.0.0/0\n\
+DisableViaHeader On\n\
+LogLevel Notice\n\
+" > /etc/tinyproxy/tinyproxy.conf
 
-# Descarga websocat estático compatible con Alpine (musl)
-RUN curl -fL -o /usr/local/bin/websocat "https://github.com/vi/websocat/releases/latest/download/websocat.x86_64-unknown-linux-musl" \
-    && chmod +x /usr/local/bin/websocat
+# Crear una pequeña página HTML de prueba
+RUN echo "<h1>Tinyproxy activo 🚀</h1>" > /var/www/index.html
 
-ENV PORT=8080
-EXPOSE 8080
+# Exponer puertos
+EXPOSE 8080 80
 
-# Servidor WS: por cada conexión ejecuta curl contra proxycheck y devuelve el JSON
-CMD ["/usr/local/bin/websocat", "-q", "-t", "ws-l:0.0.0.0:8080", "sh-c:curl -sS https://proxycheck.io/v3"]
+# Ejecutar ambos procesos: tinyproxy y servidor web
+CMD sh -c "tinyproxy -d -c /etc/tinyproxy/tinyproxy.conf & busybox httpd -f -p 80 -h /var/www"
