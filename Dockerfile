@@ -1,12 +1,5 @@
-# Imagen base de SOCKS5
-FROM serjs/go-socks5-proxy:latest
-
-# Configuración sin autenticación y puerto 8080
-ENV REQUIRE_AUTH=false
-ENV PROXY_PORT=8080
-
-# Exponer el puerto TCP
+FROM ubuntu:22.04
+RUN apt-get update && apt-get install -y squid
+COPY squid.conf /etc/squid/squid.conf
 EXPOSE 8080/tcp
-
-# Comando por defecto
-CMD ["go-socks5-proxy"]
+CMD ["squid", "-N", "-d", "1"]
