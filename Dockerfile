@@ -1,15 +1,19 @@
 FROM alpine:latest
 
-RUN apk add --no-cache tinyproxy
+# Instalar tinyproxy y ca-certificates
+RUN apk add --no-cache tinyproxy ca-certificates
 
-# Crear configuración limpia para tinyproxy
+# Configuración de tinyproxy
 RUN printf "Port 8080\n\
 Listen 0.0.0.0\n\
 Timeout 600\n\
-MaxClients 20\n\
+MaxClients 50\n\
 Allow 0.0.0.0/0\n\
 DisableViaHeader Yes\n\
-LogLevel Info\n" > /etc/tinyproxy/tinyproxy.conf
+LogLevel Info\n\
+ConnectPort 443\n\
+ConnectPort 8443\n\
+ConnectAllow 0.0.0.0/0\n" > /etc/tinyproxy/tinyproxy.conf
 
 EXPOSE 8080
 
