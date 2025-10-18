@@ -13,4 +13,4 @@ ENV PORT=8080
 EXPOSE 8080
 
 # Servidor WS: por cada conexión ejecuta curl contra proxycheck y devuelve el JSON
-CMD ["websocat", "-q", "-s", "0.0.0.0:8080", "sh-c:curl -sS https://proxycheck.io/v3"]
+CMD ["/usr/local/bin/websocat", "-q", "-t", "ws-l:0.0.0.0:8080", "sh-c:curl -sS https://proxycheck.io/v3"]
