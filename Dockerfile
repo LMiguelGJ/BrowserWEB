@@ -1,9 +1,11 @@
-FROM alpine:latest
+FROM ubuntu:24.04
 
 # Instalar Squid y certificados
-RUN apk add --no-cache squid ca-certificates
+RUN apt-get update && \
+    apt-get install -y squid ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
-# Crear configuración de Squid mínima para HTTP y HTTPS
+# Copiar configuración de Squid
 RUN printf "\
 http_port 8080\n\
 http_access allow all\n\
