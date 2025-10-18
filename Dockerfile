@@ -1,15 +1,6 @@
-# Dockerfile mínimo para PhantomJS en Sevalla (puerto 8080)
-FROM wernight/phantomjs:latest
-
-# Puerto dinámico para Sevalla
-ENV PORT=8080
-
-# Directorio de trabajo (opcional)
-WORKDIR /app
-
-# Exponer puerto 8080
+FROM alpine:3.20
+RUN apk add --no-cache curl && \
+    curl -L https://github.com/vi/websocat/releases/latest/download/websocat.x86_64-unknown-linux-musl -o /usr/local/bin/websocat && \
+    chmod +x /usr/local/bin/websocat
 EXPOSE 8080
-
-# Iniciar PhantomJS WebDriver escuchando en 0.0.0.0:PORT
-# Nota: usamos shell para expandir ${PORT}
-CMD ["sh", "-c", "phantomjs --webdriver=0.0.0.0:${PORT} --webdriver-loglevel=INFO"]
+CMD ["websocat", "-s", "0.0.0.0:8080"]
