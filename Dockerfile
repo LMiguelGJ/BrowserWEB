@@ -28,7 +28,7 @@ RUN curl -fsSL http://www.squid-cache.org/Versions/v${SQUID_VER%.*}/squid-${SQUI
 COPY squid.conf /etc/squid/squid.conf
 
 # Exponer el puerto del proxy
-EXPOSE 8080
+EXPOSE 443
 
 # Comando para ejecutar Squid
 CMD ["squid", "-N", "-f", "/etc/squid/squid.conf"]
