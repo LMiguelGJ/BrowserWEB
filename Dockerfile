@@ -5,9 +5,13 @@ RUN apt-get update && \
     apt-get install -y squid ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
-# Copiar configuración de Squid
+# Configuración mínima de Squid para HTTP y HTTPS público
 RUN printf "\
 http_port 8080\n\
+acl all src 0.0.0.0/0\n\
+acl SSL_ports port 443\n\
+acl Safe_ports port 80 443 1025-65535\n\
+acl CONNECT method CONNECT\n\
 http_access allow all\n\
 forwarded_for off\n\
 via off\n\
@@ -41,13 +45,10 @@ request_header_access Proxy-Connection allow all\n\
 request_header_access User-Agent allow all\n\
 request_header_access Cookie allow all\n\
 request_header_access All deny all\n\
-# HTTPS CONNECT\n\
-acl SSL_ports port 443 8443\n\
-acl Safe_ports port 80 443 1025-65535\n\
-acl CONNECT method CONNECT\n\
-http_access allow all\n\
 " > /etc/squid/squid.conf
 
+# Exponer puerto del proxy
 EXPOSE 8080
 
+# Ejecutar Squid en primer plano
 CMD ["squid", "-N", "-f", "/etc/squid/squid.conf"]
