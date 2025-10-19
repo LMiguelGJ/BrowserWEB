@@ -1,18 +1,47 @@
-FROM python:3.10
+# Use Node.js 18 LTS as base image
+FROM node:18-slim
 
+# Install Chrome dependencies
+RUN apt-get update && apt-get install -y \
+    wget \
+    gnupg \
+    ca-certificates \
+    procps \
+    libxss1 \
+    && wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list' \
+    && apt-get update \
+    && apt-get install -y google-chrome-stable fonts-ipafont-gothic fonts-wqy-zenhei fonts-thai-tlwg fonts-kacst fonts-freefont-ttf libxss1 \
+    --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
 WORKDIR /app
 
-COPY . /app
+# Copy package files
+COPY package*.json ./
 
-RUN pip install --trusted-host pypi.python.org -r requirements.txt
+# Install Node.js dependencies
+RUN npm ci --only=production
 
-RUN apt-get update && apt-get install -y wget unzip && \
-    wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
-    apt install -y ./google-chrome-stable_current_amd64.deb && \
-    rm google-chrome-stable_current_amd64.deb && \
-    apt-get clean
+# Copy application files
+COPY . .
 
-ENV PORT=8080
-EXPOSE 8080
+# Create user for running Chrome (security best practice)
+RUN groupadd -r pptruser && useradd -r -g pptruser -G audio,video pptruser \
+    && mkdir -p /home/pptruser/Downloads \
+    && chown -R pptruser:pptruser /home/pptruser \
+    && chown -R pptruser:pptruser /app
 
-CMD ["python", "main.py"]
+# Switch to non-root user
+USER pptruser
+
+# Expose port
+EXPOSE 3000
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV PORT=3000
+
+# Start the application
+CMD ["node", "server.js"]
