@@ -1,9 +1,15 @@
-FROM ubuntu:22.04
+FROM python:3.10
 
-RUN apt-get update && apt-get install -y squid && apt-get clean && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
 
-COPY squid.conf /etc/squid/squid.conf
+COPY . /app
 
-EXPOSE 8080/tcp
+RUN pip install --trusted-host pypi.python.org -r requirements.txt
 
-CMD ["squid", "-N", "-d", "1"]
+RUN apt-get update && apt-get install -y wget unzip && \
+    wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
+    apt install -y ./google-chrome-stable_current_amd64.deb && \
+    rm google-chrome-stable_current_amd64.deb && \
+    apt-get clean
+
+CMD ["python", "main.py"]
