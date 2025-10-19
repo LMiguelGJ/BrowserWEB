@@ -30,7 +30,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
 def main():
     global HTML_CACHE
 
-    url = os.environ.get("TARGET_URL", "https://example.com")
+    url = os.environ.get("TARGET_URL", "https://xxx.com")
 
     try:
         HTML_CACHE = fetch_html(url)
