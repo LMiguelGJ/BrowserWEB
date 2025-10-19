@@ -231,9 +231,13 @@ window.addEventListener('load', async () => {
 
     // Inicializar PyRockHTTP
     if (typeof PyRockHTTP !== 'undefined') {
+        // Usar configuración del archivo config.js
+        const config = window.PyRockConfig || {};
+        addLog(`🔧 Conectando a: ${config.serverUrl || 'http://localhost:3000'}`, 'info');
+        
         pyrock = new PyRockHTTP({
-            serverUrl: 'http://localhost:3000',
-            pollingInterval: 2000,
+            serverUrl: config.serverUrl || 'http://localhost:3000',
+            pollingInterval: config.pollingInterval || 2000,
             onLog: (message, type = 'info') => {
                 addLog(message, type);
             },
