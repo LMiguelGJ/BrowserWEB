@@ -153,31 +153,8 @@ async function sendKey(key) {
 }
 
 // Actualizar preview desde archivo estático
-function refreshPreview() {
-    const timestamp = new Date().getTime();
-    const newSrc = `/screenshot.png?t=${timestamp}`;
-
-    preview.onload = () => {
-        preview.style.display = 'block';
-        loadingText.style.display = 'none';
-        lastUpdate.textContent = `Última actualización: ${new Date().toLocaleTimeString()}`;
-    };
-
-    preview.onerror = () => {
-        preview.style.display = 'none';
-        loadingText.style.display = 'block';
-        loadingText.textContent = '❌ Error cargando imagen';
-    };
-
-    preview.src = newSrc;
-}
-
-// Inicializar preview automático
-function startAutoPreview() {
-    // Actualizar cada 1 segundo
-    setInterval(refreshPreview, 1000);
-    addLog('Preview automático iniciado (cada 1 segundo)', 'success');
-}
+// Sistema de actualización de preview eliminado - ahora se usa solo onScreenshotUpdate
+// para evitar conflictos entre dos sistemas de actualización simultáneos
 
 // Manejar tecla Enter en input de URL
 document.getElementById('urlInput').addEventListener('keypress', (e) => {
@@ -278,11 +255,27 @@ window.addEventListener('load', async () => {
             onScreenshotUpdate: (screenshot) => {
                 if (screenshot && preview) {
                     // El servidor envía la imagen ya con el formato data:image/jpeg;base64,
+                    preview.onload = () => {
+                        preview.style.display = 'block';
+                        loadingText.style.display = 'none';
+                        lastUpdate.textContent = `Última actualización: ${new Date().toLocaleTimeString()}`;
+                        addLog('Screenshot actualizado', 'success');
+                    };
+                    
+                    preview.onerror = () => {
+                        preview.style.display = 'none';
+                        loadingText.style.display = 'block';
+                        loadingText.textContent = '❌ Error cargando imagen';
+                        addLog('Error al mostrar screenshot', 'error');
+                    };
+                    
                     preview.src = screenshot;
-                    lastUpdate.textContent = new Date().toLocaleTimeString();
-                    addLog('Screenshot actualizado', 'success');
                 } else {
-                    addLog('❌ Error cargando imagen', 'error');
+                    // No hay screenshot disponible, mostrar estado de espera
+                    preview.style.display = 'none';
+                    loadingText.style.display = 'block';
+                    loadingText.textContent = '⏳ Esperando screenshot...';
+                    addLog('Esperando screenshot del servidor', 'info');
                 }
             }
         });
@@ -315,8 +308,8 @@ window.addEventListener('load', async () => {
         updateStatus('Error de librería', false);
     }
 
-    // Iniciar preview automático
-    startAutoPreview();
+    // Preview automático ahora se maneja únicamente a través de PyRockHTTP polling
+    addLog('Sistema de preview iniciado via PyRockHTTP polling', 'success');
 
     // Inicializar parser de scripts
     if (typeof PyRockScriptParser !== 'undefined') {
