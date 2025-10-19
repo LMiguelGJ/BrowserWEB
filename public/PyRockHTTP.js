@@ -28,7 +28,23 @@ class PyRockHTTP {
                 this.isConnected = true;
                 this.onStatusChange('connected');
                 this.onLog('Conectado al servidor PyRock via HTTP');
+                
+                // Inicializar navegador automáticamente si no está inicializado
+                if (response.browser === 'disconnected') {
+                    this.onLog('Inicializando navegador automáticamente...');
+                    try {
+                        await this.initBrowser();
+                    } catch (error) {
+                        this.onLog(`Error inicializando navegador: ${error.message}`);
+                    }
+                }
+                
+                // Iniciar polling para capturas automáticas cada segundo
                 this.startPolling();
+                
+                // Tomar primera captura inmediatamente
+                setTimeout(() => this.getLatestScreenshot(), 1000);
+                
                 return true;
             }
         } catch (error) {
@@ -81,16 +97,15 @@ class PyRockHTTP {
      */
     async checkForUpdates() {
         try {
+            // Tomar screenshot automáticamente cada vez que se ejecuta el polling
+            await this.getLatestScreenshot();
+            
+            // También verificar el estado del servidor
             const status = await this.makeRequest('/api/status');
             if (status.success && status.lastAction) {
-                // Si hay una nueva acción, verificar si hay screenshot
+                // Actualizar timestamp de la última acción
                 if (status.lastAction.timestamp > this.lastActionTimestamp) {
                     this.lastActionTimestamp = status.lastAction.timestamp;
-                    
-                    // Si la última acción fue un screenshot, obtenerlo
-                    if (status.lastAction.type === 'screenshot') {
-                        await this.getLatestScreenshot();
-                    }
                 }
             }
         } catch (error) {
@@ -150,6 +165,8 @@ class PyRockHTTP {
         
         if (result.success) {
             this.onLog(`Navegación exitosa: ${result.message || 'OK'}`);
+            // Tomar screenshot automáticamente después de navegar
+            setTimeout(() => this.takeScreenshot(), 1000);
         } else {
             this.onLog(`Error navegando: ${result.error}`);
         }
@@ -193,6 +210,8 @@ class PyRockHTTP {
         
         if (result.success) {
             this.onLog(`Click exitoso en (${x}, ${y})`);
+            // Tomar screenshot automáticamente después del click
+            setTimeout(() => this.takeScreenshot(), 500);
         } else {
             this.onLog(`Error en click: ${result.error}`);
         }
@@ -213,6 +232,8 @@ class PyRockHTTP {
         
         if (result.success) {
             this.onLog(`Texto escrito exitosamente: "${text}"`);
+            // Tomar screenshot automáticamente después de escribir
+            setTimeout(() => this.takeScreenshot(), 500);
         } else {
             this.onLog(`Error escribiendo texto: ${result.error}`);
         }
@@ -233,6 +254,8 @@ class PyRockHTTP {
         
         if (result.success) {
             this.onLog(`Tecla presionada exitosamente: ${key}`);
+            // Tomar screenshot automáticamente después de presionar tecla
+            setTimeout(() => this.takeScreenshot(), 500);
         } else {
             this.onLog(`Error presionando tecla: ${result.error}`);
         }
