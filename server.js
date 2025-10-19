@@ -38,12 +38,7 @@ function getBrowserConfig() {
             '--disable-gpu'
         ]
     };
-
-    // En Docker Alpine, usar Chromium
-    if (IS_PRODUCTION) {
-        config.executablePath = '/usr/bin/chromium-browser';
-    }
-
+    // No forzar executablePath, dejar que Puppeteer use su Chromium
     return config;
 }
 
