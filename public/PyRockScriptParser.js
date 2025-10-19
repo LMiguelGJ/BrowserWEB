@@ -255,7 +255,7 @@ class PyRockScriptParser {
      * Ejecutar script completo
      */
     async executeScript() {
-        if (!this.pyRock.isConnectedToServer()) {
+        if (!this.pyRock.isConnected) {
             throw new Error('No hay conexión con el servidor PyRock');
         }
         

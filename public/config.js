@@ -42,7 +42,7 @@ function autoDetectServerUrl() {
     }
 }
 
-// Comentar la línea de abajo si quieres usar la URL manual
-// window.PyRockConfig.serverUrl = autoDetectServerUrl();
+// Activar detección automática del serverUrl
+window.PyRockConfig.serverUrl = autoDetectServerUrl();
 
 console.log('🔧 PyRock Config cargado:', window.PyRockConfig);

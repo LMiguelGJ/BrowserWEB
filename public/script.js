@@ -385,7 +385,7 @@ async function executeScript() {
         return;
     }
 
-    if (!pyrock || !pyrock.isConnectedToServer()) {
+    if (!pyrock || !pyrock.isConnected) {
         addLog('Error: No hay conexión con PyRock', 'error');
         return;
     }
