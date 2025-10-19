@@ -45,46 +45,63 @@ function addLog(message, type = 'info') {
 }
 
 // Funciones de control usando únicamente PyRockCommands
-function navigate(url = null) {
+async function navigate(url = null) {
     const targetUrl = url || document.getElementById('urlInput').value.trim();
     if (!targetUrl) {
         addLog('Por favor ingresa una URL', 'error');
         return;
     }
 
-    if (pyrock && pyrock.isConnectedToServer()) {
-        pyrock.navigate(targetUrl);
-        refreshPreview(); // Actualizar preview después de navegar
+    if (pyrock && pyrock.isConnected) {
+        try {
+            await pyrock.navigate(targetUrl);
+            // El screenshot se actualizará automáticamente via polling
+        } catch (error) {
+            addLog(`Error navegando: ${error.message}`, 'error');
+        }
     } else {
         addLog('No hay conexión con el servidor PyRock', 'error');
     }
 }
 
-function takeScreenshot() {
-    if (pyrock && pyrock.isConnectedToServer()) {
-        pyrock.takeScreenshot();
+async function takeScreenshot() {
+    if (pyrock && pyrock.isConnected) {
+        try {
+            await pyrock.takeScreenshot();
+        } catch (error) {
+            addLog(`Error tomando screenshot: ${error.message}`, 'error');
+        }
     } else {
         addLog('No hay conexión con el servidor PyRock', 'error');
     }
 }
 
-function getStatus() {
-    if (pyrock && pyrock.isConnectedToServer()) {
-        pyrock.getStatus();
+async function getStatus() {
+    if (pyrock && pyrock.isConnected) {
+        try {
+            const status = await pyrock.getStatus();
+            addLog(`Estado del navegador: ${status.browser}`, 'info');
+        } catch (error) {
+            addLog(`Error obteniendo estado: ${error.message}`, 'error');
+        }
     } else {
         addLog('No hay conexión con el servidor PyRock', 'error');
     }
 }
 
-function initBrowser() {
-    if (pyrock && pyrock.isConnectedToServer()) {
-        pyrock.initBrowser();
+async function initBrowser() {
+    if (pyrock && pyrock.isConnected) {
+        try {
+            await pyrock.initBrowser();
+        } catch (error) {
+            addLog(`Error inicializando navegador: ${error.message}`, 'error');
+        }
     } else {
         addLog('No hay conexión con el servidor PyRock', 'error');
     }
 }
 
-function sendClick() {
+async function sendClick() {
     const x = parseInt(document.getElementById('clickX').value) || 600;
     const y = parseInt(document.getElementById('clickY').value) || 620;
 
@@ -95,29 +112,41 @@ function sendClick() {
         showClickIndicator(position.x, position.y);
     }
 
-    if (pyrock && pyrock.isConnectedToServer()) {
-        pyrock.click(x, y);
-        refreshPreview(); // Actualizar preview después del click
+    if (pyrock && pyrock.isConnected) {
+        try {
+            await pyrock.click(x, y);
+            // El screenshot se actualizará automáticamente via polling
+        } catch (error) {
+            addLog(`Error haciendo click: ${error.message}`, 'error');
+        }
     } else {
         addLog('No hay conexión con el servidor PyRock', 'error');
     }
 }
 
-function sendType() {
+async function sendType() {
     const text = document.getElementById('typeText').value || 'hola';
 
-    if (pyrock && pyrock.isConnectedToServer()) {
-        pyrock.type(text);
-        refreshPreview(); // Actualizar preview después de escribir
+    if (pyrock && pyrock.isConnected) {
+        try {
+            await pyrock.type(text);
+            // El screenshot se actualizará automáticamente via polling
+        } catch (error) {
+            addLog(`Error escribiendo texto: ${error.message}`, 'error');
+        }
     } else {
         addLog('No hay conexión con el servidor PyRock', 'error');
     }
 }
 
-function sendKey(key) {
-    if (pyrock && pyrock.isConnectedToServer()) {
-        pyrock.pressKey(key);
-        refreshPreview(); // Actualizar preview después de presionar tecla
+async function sendKey(key) {
+    if (pyrock && pyrock.isConnected) {
+        try {
+            await pyrock.pressKey(key);
+            // El screenshot se actualizará automáticamente via polling
+        } catch (error) {
+            addLog(`Error presionando tecla: ${error.message}`, 'error');
+        }
     } else {
         addLog('No hay conexión con el servidor PyRock', 'error');
     }

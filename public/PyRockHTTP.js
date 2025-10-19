@@ -221,6 +221,26 @@ class PyRockHTTP {
     }
     
     /**
+     * Presionar tecla
+     */
+    async pressKey(key) {
+        if (!this.isConnected) {
+            throw new Error('No conectado al servidor');
+        }
+        
+        this.onLog(`Presionando tecla: ${key}`);
+        const result = await this.makeRequest('/api/key', 'POST', { key });
+        
+        if (result.success) {
+            this.onLog(`Tecla presionada exitosamente: ${key}`);
+        } else {
+            this.onLog(`Error presionando tecla: ${result.error}`);
+        }
+        
+        return result;
+    }
+    
+    /**
      * Inicializar navegador
      */
     async initBrowser() {

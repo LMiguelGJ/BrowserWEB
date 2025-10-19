@@ -145,6 +145,23 @@ async function typeText(text) {
     }
 }
 
+/**
+ * Presionar tecla
+ */
+async function pressKey(key) {
+    try {
+        if (!page) {
+            throw new Error('Navegador no inicializado');
+        }
+        
+        await page.keyboard.press(key);
+        return { success: true, message: `Tecla presionada: ${key}` };
+    } catch (error) {
+        log.error(`Error presionando tecla: ${error.message}`);
+        return { success: false, error: error.message };
+    }
+}
+
 // Crear servidor Express
 const app = express();
 const server = http.createServer(app);
@@ -251,6 +268,22 @@ app.post('/api/type', async (req, res) => {
         
         const result = await typeText(text);
         lastAction = { type: 'type', result, timestamp: Date.now() };
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Presionar tecla
+app.post('/api/key', async (req, res) => {
+    try {
+        const { key } = req.body;
+        if (!key) {
+            return res.status(400).json({ success: false, error: 'Tecla requerida' });
+        }
+        
+        const result = await pressKey(key);
+        lastAction = { type: 'key', result, timestamp: Date.now() };
         res.json(result);
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
