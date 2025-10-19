@@ -8,7 +8,6 @@ require('dotenv').config();
 
 const express = require('express');
 const http = require('http');
-const WebSocket = require('ws');
 const puppeteer = require('puppeteer');
 const path = require('path');
 
@@ -167,83 +166,107 @@ app.get('/health', (req, res) => {
     });
 });
 
-// Crear servidor WebSocket
-const wss = new WebSocket.Server({ server });
+// Middleware para JSON
+app.use(express.json());
 
-wss.on('connection', (ws) => {
-    log.info('Cliente WebSocket conectado');
-    
-    // Enviar estado inicial
-    ws.send(JSON.stringify({
-        type: 'status',
-        message: 'Conectado al servidor PyRock',
-        browserReady: !!browser
-    }));
-    
-    ws.on('message', async (message) => {
-        try {
-            const data = JSON.parse(message);
-            await handleWebSocketMessage(ws, data);
-        } catch (error) {
-            log.error(`Error procesando mensaje WebSocket: ${error.message}`);
-            ws.send(JSON.stringify({
-                type: 'error',
-                message: error.message
-            }));
-        }
-    });
-    
-    ws.on('close', () => {
-        log.info('Cliente WebSocket desconectado');
+// Estado global para comunicación
+let lastScreenshot = null;
+let lastAction = { type: 'status', message: 'Servidor iniciado', timestamp: Date.now() };
+
+// API Endpoints REST
+
+// Estado del servidor y navegador
+app.get('/api/status', (req, res) => {
+    res.json({
+        success: true,
+        browser: browser ? 'connected' : 'disconnected',
+        browserReady: !!browser,
+        lastAction: lastAction,
+        timestamp: new Date().toISOString()
     });
 });
 
-/**
- * Manejar mensajes WebSocket
- */
-async function handleWebSocketMessage(ws, data) {
-    const { type, payload } = data;
-    
-    switch (type) {
-        case 'navigate':
-            const navResult = await navigateToUrl(payload.url);
-            ws.send(JSON.stringify({
-                type: 'navigate_result',
-                ...navResult
-            }));
-            break;
-            
-        case 'screenshot':
-            const screenshotResult = await takeScreenshot();
-            ws.send(JSON.stringify({
-                type: 'screenshot_result',
-                ...screenshotResult
-            }));
-            break;
-            
-        case 'click':
-            const clickResult = await clickAt(payload.x, payload.y);
-            ws.send(JSON.stringify({
-                type: 'click_result',
-                ...clickResult
-            }));
-            break;
-            
-        case 'type':
-            const typeResult = await typeText(payload.text);
-            ws.send(JSON.stringify({
-                type: 'type_result',
-                ...typeResult
-            }));
-            break;
-            
-        default:
-            ws.send(JSON.stringify({
-                type: 'error',
-                message: `Comando no reconocido: ${type}`
-            }));
+// Navegar a URL
+app.post('/api/navigate', async (req, res) => {
+    try {
+        const { url } = req.body;
+        if (!url) {
+            return res.status(400).json({ success: false, error: 'URL requerida' });
+        }
+        
+        const result = await navigateToUrl(url);
+        lastAction = { type: 'navigate', result, timestamp: Date.now() };
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
     }
-}
+});
+
+// Tomar screenshot
+app.post('/api/screenshot', async (req, res) => {
+    try {
+        const result = await takeScreenshot();
+        if (result.success) {
+            lastScreenshot = result.screenshot;
+        }
+        lastAction = { type: 'screenshot', result, timestamp: Date.now() };
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Obtener último screenshot
+app.get('/api/screenshot', (req, res) => {
+    if (lastScreenshot) {
+        res.json({ success: true, screenshot: lastScreenshot });
+    } else {
+        res.json({ success: false, error: 'No hay screenshot disponible' });
+    }
+});
+
+// Click en coordenadas
+app.post('/api/click', async (req, res) => {
+    try {
+        const { x, y } = req.body;
+        if (x === undefined || y === undefined) {
+            return res.status(400).json({ success: false, error: 'Coordenadas x, y requeridas' });
+        }
+        
+        const result = await clickAt(x, y);
+        lastAction = { type: 'click', result, timestamp: Date.now() };
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Escribir texto
+app.post('/api/type', async (req, res) => {
+    try {
+        const { text } = req.body;
+        if (!text) {
+            return res.status(400).json({ success: false, error: 'Texto requerido' });
+        }
+        
+        const result = await typeText(text);
+        lastAction = { type: 'type', result, timestamp: Date.now() };
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Inicializar navegador
+app.post('/api/init', async (req, res) => {
+    try {
+        const result = await initBrowser();
+        lastAction = { type: 'init', result: { success: result }, timestamp: Date.now() };
+        res.json({ success: result, message: result ? 'Navegador inicializado' : 'Error inicializando navegador' });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 
 /**
  * Iniciar servidor (como main() en Python)

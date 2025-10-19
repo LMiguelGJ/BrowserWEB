@@ -1,4 +1,4 @@
-// Instancia de PyRockCommands
+// Instancia de PyRockHTTP
 let pyrock = null;
 
 // Instancia del parser de scripts
@@ -229,37 +229,52 @@ preview.addEventListener('click', (event) => {
 window.addEventListener('load', async () => {
     addLog('Iniciando PyRock...', 'info');
 
-    // Inicializar PyRockCommands
-    if (typeof PyRockCommands !== 'undefined') {
-        pyrock = new PyRockCommands();
-
-        // Configurar callbacks
-        pyrock.onLog((message, type) => {
-            addLog(message, type);
-        });
-
-        pyrock.onStatusChange((connected, message) => {
-            updateStatus(connected ? 'Conectado' : 'Desconectado', connected);
-            if (message) {
-                addLog(message, connected ? 'success' : 'error');
+    // Inicializar PyRockHTTP
+    if (typeof PyRockHTTP !== 'undefined') {
+        pyrock = new PyRockHTTP({
+            serverUrl: 'http://localhost:3000',
+            pollingInterval: 2000,
+            onLog: (message, type = 'info') => {
+                addLog(message, type);
+            },
+            onStatusChange: (status) => {
+                const connected = status === 'connected';
+                updateStatus(connected ? 'Conectado' : 'Desconectado', connected);
+                addLog(`Estado: ${status}`, connected ? 'success' : 'error');
+            },
+            onScreenshotUpdate: (screenshot) => {
+                if (screenshot && preview) {
+                    preview.src = `data:image/png;base64,${screenshot}`;
+                    lastUpdate.textContent = new Date().toLocaleTimeString();
+                }
             }
         });
 
-        // Conectar PyRockCommands
+        // Conectar PyRockHTTP
         try {
-            await pyrock.connect();
-            addLog('PyRockCommands inicializado correctamente', 'success');
-
-            // Obtener estado inicial
-            setTimeout(() => {
-                pyrock.getStatus();
-            }, 1000);
+            const connected = await pyrock.connect();
+            if (connected) {
+                addLog('PyRock HTTP inicializado correctamente', 'success');
+                
+                // Obtener estado inicial
+                setTimeout(async () => {
+                    try {
+                        const status = await pyrock.getStatus();
+                        addLog(`Estado del servidor: ${status.browser}`, 'info');
+                    } catch (error) {
+                        addLog(`Error obteniendo estado: ${error.message}`, 'error');
+                    }
+                }, 1000);
+            } else {
+                addLog('Error conectando al servidor', 'error');
+                updateStatus('Error de conexión', false);
+            }
         } catch (error) {
-            addLog(`Error inicializando PyRockCommands: ${error.message}`, 'error');
+            addLog(`Error inicializando PyRock HTTP: ${error.message}`, 'error');
             updateStatus('Error de conexión', false);
         }
     } else {
-        addLog('Error: PyRockCommands no está disponible', 'error');
+        addLog('Error: PyRockHTTP no está disponible', 'error');
         updateStatus('Error de librería', false);
     }
 
