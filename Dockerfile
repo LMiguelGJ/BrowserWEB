@@ -1,32 +1,40 @@
-# Dockerfile para PyRock con Puppeteer
-FROM node:20-bullseye
+# Dockerfile simplificado para PyRock
+FROM node:18-alpine
 
-# Instala dependencias de Chromium necesarias para Puppeteer
-RUN apt-get update && apt-get install -y \
-    wget \
+# Instalar Chrome y dependencias mínimas
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    freetype-dev \
+    harfbuzz \
     ca-certificates \
-    fonts-liberation \
-    libasound2 \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libcups2 \
-    libdrm2 \
-    libgbm1 \
-    libgtk-3-0 \
-    libnspr4 \
-    libnss3 \
-    libx11-xcb1 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxrandr2 \
-    xdg-utils \
-    --no-install-recommends && rm -rf /var/lib/apt/lists/*
+    ttf-freefont
 
+# Configurar Puppeteer para usar Chromium instalado
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
+# Directorio de trabajo
 WORKDIR /app
-COPY package*.json ./
-RUN npm install --omit=dev
+
+# Copiar archivos de configuración
+COPY package.json ./
+
+# Instalar dependencias (modo simple)
+RUN npm install --production --silent
+
+# Copiar código fuente
 COPY . .
 
+# Puerto
 EXPOSE 3000
 
-CMD ["npm", "run", "start"]
+# Usuario no-root para seguridad
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S pyrock -u 1001 -G nodejs && \
+    chown -R pyrock:nodejs /app
+USER pyrock
+
+# Comando de inicio
+CMD ["node", "server.js"]

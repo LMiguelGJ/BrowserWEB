@@ -38,7 +38,12 @@ function getBrowserConfig() {
             '--disable-gpu'
         ]
     };
-    // No forzar executablePath, dejar que Puppeteer use su Chromium
+
+    // En Docker Alpine, usar Chromium
+    if (IS_PRODUCTION) {
+        config.executablePath = '/usr/bin/chromium-browser';
+    }
+
     return config;
 }
 
@@ -46,35 +51,50 @@ function getBrowserConfig() {
  * Inicializar navegador (como fetch_html en Python)
  */
 async function initBrowser() {
-    if (browser) {
-        try {
-            await browser.close();
-        } catch (err) {
-            _logger.error('Error cerrando navegador:', err);
+    try {
+        if (browser) {
+            try {
+                await browser.close();
+            } catch (err) {
+                log.error('Error cerrando navegador:', err);
+            }
         }
+        
+        log.info('Iniciando navegador...');
+        browser = await puppeteer.launch(getBrowserConfig());
+        page = await browser.newPage();
+        
+        // Configuración básica
+        await page.setViewport({ width: 1280, height: 720 });
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36');
+        await page.setExtraHTTPHeaders({ 'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8' });
+        
+        log.info('✅ Navegador iniciado correctamente');
+        return true;
+    } catch (error) {
+        log.error(`Error iniciando navegador: ${error.message}`);
+        return false;
     }
-    browser = await puppeteer.launch({ headless: true });
-    page = await browser.newPage();
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36');
-    await page.setExtraHTTPHeaders({ 'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8' });
 }
 
 /**
  * Navegar a URL
  */
 async function navigateToUrl(url) {
-    if (!page) {
-        await initBrowser();
-    }
     try {
+        if (!page) {
+            throw new Error('Navegador no inicializado');
+        }
+        
+        log.info(`Navegando a: ${url}`);
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        return true;
-    } catch (err) {
-        _logger.error('Error navegando:', err);
-        if (String(err).includes('Target closed') || String(err).includes('Navigation timeout')) {
+        return { success: true, message: 'Navegación exitosa' };
+    } catch (error) {
+        log.error(`Error navegando: ${error.message}`);
+        if (String(error).includes('Target closed') || String(error).includes('Navigation timeout')) {
             await initBrowser();
         }
-        return false;
+        return { success: false, error: error.message };
     }
 }
 
