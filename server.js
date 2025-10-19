@@ -18,6 +18,7 @@ const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 // Variables globales
 let browser = null;
 let page = null;
+let error503Count = 0;
 
 // Logger simple
 const log = {
@@ -73,8 +74,18 @@ async function navigateToUrl(url) {
     }
     try {
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        error503Count = 0; // Reset counter on success
         return true;
     } catch (err) {
+        if (String(err).includes('503')) {
+            error503Count++;
+            log.error(`Error 503 detectado (${error503Count}/3)`);
+            if (error503Count >= 3) {
+                log.info('⚠️ Reiniciando navegador por protección anti-bot (3 errores 503 consecutivos)');
+                await initBrowser();
+                error503Count = 0;
+            }
+        }
         _logger.error('Error navegando:', err);
         if (String(err).includes('Target closed') || String(err).includes('Navigation timeout')) {
             await initBrowser();
@@ -91,15 +102,23 @@ async function takeScreenshot() {
         if (!page) {
             throw new Error('Navegador no inicializado');
         }
-        
         const screenshot = await page.screenshot({ 
             encoding: 'base64',
             quality: 80,
             type: 'jpeg'
         });
-        
+        error503Count = 0; // Reset counter on success
         return { success: true, screenshot: `data:image/jpeg;base64,${screenshot}` };
     } catch (error) {
+        if (String(error).includes('503')) {
+            error503Count++;
+            log.error(`Error 503 detectado (${error503Count}/3)`);
+            if (error503Count >= 3) {
+                log.info('⚠️ Reiniciando navegador por protección anti-bot (3 errores 503 consecutivos)');
+                await initBrowser();
+                error503Count = 0;
+            }
+        }
         log.error(`Error tomando screenshot: ${error.message}`);
         return { success: false, error: error.message };
     }
