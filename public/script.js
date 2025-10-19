@@ -44,7 +44,7 @@ function addLog(message, type = 'info') {
     }
 }
 
-// Funciones de control usando únicamente PyRockCommands
+// Funciones de control usando PyRockHTTP (REST API)
 async function navigate(url = null) {
     const targetUrl = url || document.getElementById('urlInput').value.trim();
     if (!targetUrl) {
@@ -277,8 +277,12 @@ window.addEventListener('load', async () => {
             },
             onScreenshotUpdate: (screenshot) => {
                 if (screenshot && preview) {
-                    preview.src = `data:image/png;base64,${screenshot}`;
+                    // El servidor envía la imagen ya con el formato data:image/jpeg;base64,
+                    preview.src = screenshot;
                     lastUpdate.textContent = new Date().toLocaleTimeString();
+                    addLog('Screenshot actualizado', 'success');
+                } else {
+                    addLog('❌ Error cargando imagen', 'error');
                 }
             }
         });

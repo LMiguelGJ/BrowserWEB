@@ -1,12 +1,12 @@
 /**
  * PyRockScriptParser.js - Parser básico para scripts de PyRock
  * Versión: 1.0.0
- * Descripción: Parser simple que traduce comandos de script a métodos de PyRockCommands
+ * Descripción: Parser simple que traduce comandos de script a métodos de PyRockHTTP
  */
 
 class PyRockScriptParser {
-    constructor(pyRockCommands, visualIndicatorFunctions = null) {
-        this.pyRock = pyRockCommands;
+    constructor(pyRockHTTP, visualIndicatorFunctions = null) {
+        this.pyRock = pyRockHTTP;
         this.commands = [];
         this.currentLine = 0;
         this.visualIndicators = visualIndicatorFunctions;
