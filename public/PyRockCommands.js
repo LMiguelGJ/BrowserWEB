@@ -140,48 +140,60 @@ class PyRockCommands {
      * @private
      */
     _handleMessage(data) {
-        switch (data.type) {
-            case 'navigation_success':
-                this._log(`✅ ${data.message}`, 'success');
-                break;
-            case 'navigation_error':
-                this._log(`❌ ${data.message}`, 'error');
-                break;
-            case 'screenshot_saved':
-                this._log(`📷 ${data.message}`, 'success');
-                break;
-            case 'screenshot_error':
-                this._log(`❌ ${data.message}`, 'error');
-                break;
+        const { type, message, success, error, screenshot } = data;
+
+        switch (type) {
             case 'status':
-                this._log(`ℹ️ ${data.message}`, 'info');
+                this._log(message || 'Estado recibido', 'info');
                 break;
-            case 'init_success':
-                this._log(`✅ ${data.message}`, 'success');
+
+            case 'navigate_result':
+                if (success) {
+                    this._log(message || 'Navegación exitosa', 'success');
+                } else {
+                    this._log(error || 'Error navegando', 'error');
+                }
                 break;
-            case 'init_error':
-                this._log(`❌ ${data.message}`, 'error');
+
+            case 'screenshot_result':
+                if (success && screenshot) {
+                    this._log('Screenshot capturado', 'success');
+                    // Actualizar la imagen del preview
+                    const preview = document.getElementById('preview');
+                    if (preview) {
+                        preview.src = screenshot;
+                        const lastUpdate = document.getElementById('lastUpdate');
+                        if (lastUpdate) {
+                            lastUpdate.textContent = new Date().toLocaleTimeString();
+                        }
+                    }
+                } else {
+                    this._log(error || 'Error capturando screenshot', 'error');
+                }
                 break;
-            case 'click_success':
-                this._log(`🖱️ ${data.message}`, 'success');
+
+            case 'click_result':
+                if (success) {
+                    this._log(message || 'Click realizado', 'success');
+                } else {
+                    this._log(error || 'Error realizando click', 'error');
+                }
                 break;
-            case 'click_error':
-                this._log(`❌ ${data.message}`, 'error');
+
+            case 'type_result':
+                if (success) {
+                    this._log(message || 'Texto escrito', 'success');
+                } else {
+                    this._log(error || 'Error escribiendo texto', 'error');
+                }
                 break;
-            case 'type_success':
-                this._log(`⌨️ ${data.message}`, 'success');
+
+            case 'error':
+                this._log(message || 'Error del servidor', 'error');
                 break;
-            case 'type_error':
-                this._log(`❌ ${data.message}`, 'error');
-                break;
-            case 'key_success':
-                this._log(`🔑 ${data.message}`, 'success');
-                break;
-            case 'key_error':
-                this._log(`❌ ${data.message}`, 'error');
-                break;
+
             default:
-                this._log(`Mensaje no reconocido: ${data.type}`, 'warn');
+                this._log(`Mensaje no reconocido: ${type}`, 'warn');
         }
     }
 
@@ -190,7 +202,7 @@ class PyRockCommands {
      * @private
      */
     _sendCommand(command) {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        if (!this.isConnected || !this.ws) {
             this._log('No hay conexión con el servidor', 'error');
             return false;
         }
@@ -212,20 +224,17 @@ class PyRockCommands {
      */
     navigate(url) {
         if (!url || typeof url !== 'string') {
-            this._log('URL requerida para navegar', 'error');
+            this._log('URL inválida', 'error');
             return false;
         }
 
-        const success = this._sendCommand({
+        this._log(`Navegando a: ${url}`, 'info');
+        
+        return this._sendCommand({
             type: 'navigate',
-            url: url.trim()
+            payload: { url: url }
         });
 
-        if (success) {
-            this._log(`Navegando a: ${url}`, 'info');
-        }
-
-        return success;
     }
 
     // ==================== COMANDOS DE MOUSE ====================
@@ -237,21 +246,16 @@ class PyRockCommands {
      */
     click(x, y) {
         if (typeof x !== 'number' || typeof y !== 'number') {
-            this._log('Coordenadas X e Y requeridas para click', 'error');
+            this._log('Coordenadas inválidas para click', 'error');
             return false;
         }
 
-        const success = this._sendCommand({
+        this._log(`Click en (${x}, ${y})`, 'info');
+        
+        return this._sendCommand({
             type: 'click',
-            x: x,
-            y: y
+            payload: { x: x, y: y }
         });
-
-        if (success) {
-            this._log(`Click enviado en (${x}, ${y})`, 'info');
-        }
-
-        return success;
     }
 
     // ==================== COMANDOS DE TECLADO ====================
@@ -266,16 +270,12 @@ class PyRockCommands {
             return false;
         }
 
-        const success = this._sendCommand({
+        this._log(`Escribiendo: "${text}"`, 'info');
+        
+        return this._sendCommand({
             type: 'type',
-            text: text
+            payload: { text: text }
         });
-
-        if (success) {
-            this._log(`Texto enviado: "${text}"`, 'info');
-        }
-
-        return success;
     }
 
     /**
@@ -357,15 +357,11 @@ class PyRockCommands {
      * Tomar captura de pantalla
      */
     takeScreenshot() {
-        const success = this._sendCommand({
+        this._log('Solicitando captura de pantalla...', 'info');
+        
+        return this._sendCommand({
             type: 'screenshot'
         });
-
-        if (success) {
-            this._log('Solicitando captura de pantalla...', 'info');
-        }
-
-        return success;
     }
 
     // ==================== COMANDOS COMBINADOS ====================
