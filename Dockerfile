@@ -1,48 +1,40 @@
-# Use Node.js 18 LTS as base image
-FROM node:18-slim
+# Dockerfile simplificado para PyRock
+FROM node:18-alpine
 
-# Install Chrome dependencies
-RUN apt-get update && apt-get install -y \
-    wget \
-    gnupg \
+# Instalar Chrome y dependencias mínimas
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    freetype-dev \
+    harfbuzz \
     ca-certificates \
-    procps \
-    libxss1 \
-    && wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list' \
-    && apt-get update \
-    && apt-get install -y google-chrome-stable fonts-ipafont-gothic fonts-wqy-zenhei fonts-thai-tlwg fonts-kacst fonts-freefont-ttf libxss1 \
-    --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/*
+    ttf-freefont
 
-# Set working directory
+# Configurar Puppeteer para usar Chromium instalado
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
+# Directorio de trabajo
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Copiar archivos de configuración
+COPY package.json ./
 
-# Clear npm cache and install dependencies
-RUN npm cache clean --force && \
-    npm install --only=production --no-audit --no-fund
+# Instalar dependencias (modo simple)
+RUN npm install --production --silent
 
-# Copy application files
+# Copiar código fuente
 COPY . .
 
-# Create user for running Chrome (security best practice)
-RUN groupadd -r pptruser && useradd -r -g pptruser -G audio,video pptruser \
-    && mkdir -p /home/pptruser/Downloads \
-    && chown -R pptruser:pptruser /home/pptruser \
-    && chown -R pptruser:pptruser /app
-
-# Switch to non-root user
-USER pptruser
-
-# Expose port
+# Puerto
 EXPOSE 3000
 
-# Set environment variables
-ENV NODE_ENV=production
-ENV PORT=3000
+# Usuario no-root para seguridad
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S pyrock -u 1001 -G nodejs && \
+    chown -R pyrock:nodejs /app
+USER pyrock
 
-# Start the application
+# Comando de inicio
 CMD ["node", "server.js"]
