@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "pyrock",
+  "version": "1.0.0",
+  "description": "Automatización con Puppeteer y Control remoto de navegador - Docker Ready",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "NODE_ENV=development node server.js",
+    "docker:build": "docker build -t pyrock .",
+    "docker:run": "docker run -p 3000:3000 pyrock",
+    "docker:dev": "docker run -p 3000:3000 -v $(pwd):/app pyrock"
+  },
+  "keywords": [
+    "puppeteer",
+    "automation",
+    "websocket",
+    "express",
+    "remote-control",
+    "docker",
+    "browser-automation"
+  ],
+  "author": "LMiguelGJ",
+  "license": "MIT",
+  "dependencies": {
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "puppeteer": "^24.25.0",
+    "ws": "^8.14.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "."
+  },
+  "bugs": {
+    "url": "."
+  },
+  "homepage": "."
+}

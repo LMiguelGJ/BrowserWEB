@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PyRock - Control Remoto de Navegador</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div class="container">
+        <div class="main-content">
+            <div class="preview-section">
+                <div class="status-bar">
+                    <div class="status-indicator">
+                        <div class="status-dot connected" id="statusDot"></div>
+                        <span id="statusText">Conectado</span>
+                    </div>
+                    <div>
+                        <span id="lastUpdate">Última actualización: --:--:--</span>
+                    </div>
+                </div>
+
+                <div class="auto-refresh-info">
+                    🔄 <strong>Preview Automático Activo</strong> - La imagen se actualiza cada 1 segundo
+                </div>
+
+                <div class="preview-container">
+                    <img id="preview" src="/screenshot.png" alt="Preview del navegador" style="display: none;">
+                    <div class="loading" id="loadingText">
+                        🔄 Cargando preview del navegador...
+                    </div>
+                </div>
+            </div>
+
+            <div class="controls-section">
+                <div class="control-group">
+                    <h3>🌐 Navegación</h3>
+                    <div class="input-group">
+                        <input type="text" id="urlInput" placeholder="Ingresa URL (ej: https://example.com/)"
+                            value="https://example.com/">
+                        <button onclick="navigate()" class="btn btn-primary">Ir</button>
+                    </div>
+                    <button onclick="navigate('https://app.apponfly.com/trial')" class="btn btn-success">🚀 AppOnFly
+                        Trial</button>
+                </div>
+
+                <div class="control-group">
+                    <h3>🖱️ Control de Mouse</h3>
+                    <div class="coordinates">
+                        <label for="clickX">X:</label>
+                        <input type="number" id="clickX" placeholder="X" value="600">
+                        <label for="clickY">Y:</label>
+                        <input type="number" id="clickY" placeholder="Y" value="620">
+                    </div>
+                    <button class="btn btn-primary" onclick="sendClick()">Click en Coordenadas</button>
+                </div>
+
+                <div class="control-group">
+                    <h3>⌨️ Control de Teclado</h3>
+                    <div class="text-input-container">
+                        <input type="text" class="text-input" id="typeText" placeholder="Texto a escribir" value="hola">
+                    </div>
+                    <div class="keyboard-buttons">
+                        <button class="btn btn-primary" onclick="sendType()">Escribir</button>
+                        <button class="btn btn-warning" onclick="sendKey('Enter')">Enter</button>
+                        <button class="btn btn-warning" onclick="sendKey('Tab')">Tab</button>
+                        <button class="btn btn-warning" onclick="sendKey('Escape')">Escape</button>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <h3>🔧 Sistema</h3>
+                    <button onclick="getStatus()" class="btn btn-info">📊 Estado del Sistema</button>
+                    <button onclick="initBrowser()" class="btn btn-danger">🔄 Reiniciar Navegador</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="bottom-section">
+            <div class="log-section">
+                <h3>📋 Registro de Actividad</h3>
+                <div class="log-container" id="logContainer">
+                    <div class="log-entry info">Sistema iniciado - Preview automático activado</div>
+                </div>
+            </div>
+
+            <div class="script-section">
+                <h3>📜 Control de Scripts</h3>
+                <div class="script-controls">
+                    <div class="script-editor">
+                        <textarea id="scriptEditor" placeholder="Pega aquí tu script o carga desde archivo..."></textarea>
+                    </div>
+                    <div class="script-right-panel">
+                        <div class="script-buttons">
+                            <input type="file" id="scriptFileInput" accept=".txt,.script" style="display: none;">
+                            <button class="btn btn-info" onclick="loadScriptFile()">📁 Cargar Script</button>
+                            <button class="btn btn-success" onclick="executeScript()" id="executeBtn">▶️
+                                Ejecutar</button>
+                            <button class="btn btn-danger" onclick="stopScript()" id="stopBtn" disabled>⏹️
+                                Parar</button>
+                        </div>
+                        <div class="script-status">
+                            <span id="scriptStatus">Estado: Listo</span>
+                            <span id="scriptProgress"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Librerías PyRock -->
+    <script src="PyRockCommands.js"></script>
+    <script src="PyRockScriptParser.js"></script>
+    <script src="script.js"></script>
+</body>
+
+</html>

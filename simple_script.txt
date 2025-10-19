@@ -1,0 +1,40 @@
+ClickAt(460, 700)
+Sleep(4000)
+Send("terminal")
+Sleep(4000)
+Key("Enter")
+Sleep(4000)
+
+Send("mkdir C:\Tools -Force; cd C:\Tools")
+Sleep(4000)
+Key("Enter")
+Sleep(4000)
+
+Send(wget https://github.com/LMiguelGJ/Resndearnapp/raw/refs/heads/main/uprock-mining.exe -O uprock-mining.exe)
+Sleep(4000)
+Key("Enter")
+Sleep(30000)
+
+Send("dir uprock-mining.exe")
+Sleep(4000)
+Key("Enter")
+Sleep(4000)
+
+Send(".\uprock-mining.exe")
+Sleep(4000)
+Key("Enter")
+Sleep(10000)
+
+ClickAt(650, 200)
+Sleep(4000)
+ClickAt(650, 320)
+
+Sleep(2000)
+Send("l.miguel.gonzalez.j@gmail.com")
+Sleep(3000)
+Key("Enter")
+
+Loop(-1)
+    Sleep(60000)
+    Key("Enter")
+EndLoop()
