@@ -182,11 +182,11 @@ class PyRockHTTP {
             throw new Error('No conectado al servidor');
         }
         
-        this.onLog('Tomando screenshot...');
+        // Comentado para reducir spam: this.onLog('Tomando screenshot...');
         const result = await this.makeRequest('/api/screenshot', 'POST');
         
         if (result.success) {
-            this.onLog('Screenshot tomado exitosamente');
+            // Comentado para reducir spam: this.onLog('Screenshot tomado exitosamente');
             if (result.screenshot) {
                 this.onScreenshotUpdate(result.screenshot);
             }

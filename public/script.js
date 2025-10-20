@@ -259,7 +259,7 @@ window.addEventListener('load', async () => {
                         preview.style.display = 'block';
                         loadingText.style.display = 'none';
                         lastUpdate.textContent = `Última actualización: ${new Date().toLocaleTimeString()}`;
-                        addLog('Screenshot actualizado', 'success');
+                        // Comentado para reducir spam en logs: addLog('Screenshot actualizado', 'success');
                     };
                     
                     preview.onerror = () => {
@@ -275,7 +275,7 @@ window.addEventListener('load', async () => {
                     preview.style.display = 'none';
                     loadingText.style.display = 'block';
                     loadingText.textContent = '⏳ Esperando screenshot...';
-                    addLog('Esperando screenshot del servidor', 'info');
+                    // Comentado para reducir spam: addLog('Esperando screenshot del servidor', 'info');
                 }
             }
         });

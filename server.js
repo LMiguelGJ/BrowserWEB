@@ -64,10 +64,57 @@ async function initBrowser() {
         browser = await puppeteer.launch(getBrowserConfig());
         page = await browser.newPage();
         
-        // Configuración básica
-        await page.setViewport({ width: 1280, height: 720 });
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36');
-        await page.setExtraHTTPHeaders({ 'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8' });
+        // Configuración avanzada para evitar detección de bots
+        await page.setViewport({ width: 1366, height: 768 }); // Resolución más común
+        
+        // User-Agent más actualizado y realista
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        
+        // Headers completos para simular navegador real
+        await page.setExtraHTTPHeaders({
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Cache-Control': 'max-age=0'
+        });
+        
+        // Configuraciones adicionales para evitar detección
+        await page.evaluateOnNewDocument(() => {
+            // Eliminar propiedades que revelan automatización
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined,
+            });
+            
+            // Simular plugins de navegador real
+            Object.defineProperty(navigator, 'plugins', {
+                get: () => [1, 2, 3, 4, 5],
+            });
+            
+            // Simular idiomas
+            Object.defineProperty(navigator, 'languages', {
+                get: () => ['es-ES', 'es', 'en'],
+            });
+            
+            // Ocultar automatización de Chrome
+            window.chrome = {
+                runtime: {},
+            };
+            
+            // Simular permisos
+            const originalQuery = window.navigator.permissions.query;
+            window.navigator.permissions.query = (parameters) => (
+                parameters.name === 'notifications' ?
+                    Promise.resolve({ state: 'granted' }) :
+                    originalQuery(parameters)
+            );
+        });
         
         log.info('✅ Navegador iniciado correctamente');
         return true;
@@ -78,24 +125,116 @@ async function initBrowser() {
 }
 
 /**
- * Navegar a URL
+ * Navegar a URL con reintentos y manejo robusto de errores
  */
-async function navigateToUrl(url) {
+async function navigateToUrl(url, retryCount = 0) {
+    const maxRetries = 3;
+    const retryDelay = Math.pow(2, retryCount) * 1000; // Backoff exponencial
+    
     try {
         if (!page) {
             throw new Error('Navegador no inicializado');
         }
         
-        log.info(`Navegando a: ${url}`);
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        return { success: true, message: 'Navegación exitosa' };
+        log.info(`Navegando a: ${url}${retryCount > 0 ? ` (intento ${retryCount + 1}/${maxRetries + 1})` : ''}`);
+        
+        // Configurar headers adicionales para evitar detección de bots
+        await page.setExtraHTTPHeaders({
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+        });
+        
+        // Intentar navegación con timeout más largo
+        const response = await page.goto(url, { 
+            waitUntil: 'domcontentloaded', 
+            timeout: 45000 
+        });
+        
+        // Verificar código de estado HTTP
+        if (response) {
+            const status = response.status();
+            log.info(`Respuesta HTTP: ${status}`);
+            
+            if (status >= 400) {
+                const errorMsg = `HTTP ${status}: ${response.statusText()}`;
+                
+                // Errores temporales que pueden beneficiarse de reintentos
+                if ([503, 502, 504, 429, 408].includes(status) && retryCount < maxRetries) {
+                    log.warn(`${errorMsg} - Reintentando en ${retryDelay}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, retryDelay));
+                    return await navigateToUrl(url, retryCount + 1);
+                }
+                
+                // Errores específicos con mensajes informativos
+                if (status === 503) {
+                    throw new Error(`${errorMsg} - El sitio web está temporalmente no disponible o bloqueando bots`);
+                } else if (status === 403) {
+                    throw new Error(`${errorMsg} - Acceso denegado, posible detección de bot`);
+                } else if (status === 429) {
+                    throw new Error(`${errorMsg} - Demasiadas solicitudes, el sitio está limitando el acceso`);
+                } else {
+                    throw new Error(errorMsg);
+                }
+            }
+        }
+        
+        log.info('✅ Navegación exitosa');
+        return { success: true, message: 'Navegación exitosa', status: response?.status() };
+        
     } catch (error) {
-        log.error(`Error navegando: ${error.message}`);
-        if (String(error).includes('Target closed') || String(error).includes('Navigation timeout')) {
+        const errorMsg = error.message;
+        log.error(`Error navegando: ${errorMsg}`);
+        
+        // Errores de conexión que pueden beneficiarse de reintentos
+        const retryableErrors = [
+            'Navigation timeout',
+            'net::ERR_CONNECTION_REFUSED',
+            'net::ERR_CONNECTION_RESET',
+            'net::ERR_NETWORK_CHANGED',
+            'Target closed'
+        ];
+        
+        const shouldRetry = retryableErrors.some(err => errorMsg.includes(err)) && retryCount < maxRetries;
+        
+        if (shouldRetry) {
+            log.warn(`Error temporal detectado - Reintentando en ${retryDelay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+            return await navigateToUrl(url, retryCount + 1);
+        }
+        
+        // Reinicializar navegador en casos críticos
+        if (errorMsg.includes('Target closed') || errorMsg.includes('Protocol error')) {
+            log.warn('Reinicializando navegador debido a error crítico...');
             await initBrowser();
         }
-        return { success: false, error: error.message };
+        
+        return { 
+            success: false, 
+            error: errorMsg,
+            retries: retryCount,
+            suggestion: getSuggestionForError(errorMsg)
+        };
     }
+}
+
+/**
+ * Obtener sugerencia basada en el tipo de error
+ */
+function getSuggestionForError(errorMsg) {
+    if (errorMsg.includes('503')) {
+        return 'El sitio puede estar bloqueando bots. Intenta con una URL diferente o espera unos minutos.';
+    } else if (errorMsg.includes('403')) {
+        return 'Acceso denegado. El sitio detectó el navegador automatizado.';
+    } else if (errorMsg.includes('429')) {
+        return 'Demasiadas solicitudes. Espera unos minutos antes de intentar nuevamente.';
+    } else if (errorMsg.includes('timeout')) {
+        return 'Timeout de conexión. Verifica la URL o intenta con un sitio más rápido.';
+    }
+    return 'Error de navegación. Verifica la URL e intenta nuevamente.';
 }
 
 /**
