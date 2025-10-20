@@ -5,6 +5,9 @@ class PyRockHTTP {
     constructor(options = {}) {
         this.serverUrl = options.serverUrl || 'http://localhost:3000';
         this.pollingInterval = options.pollingInterval || 2000; // 2 segundos
+        this.statusPollIntervalMs = options.statusPollIntervalMs || 30000; // estado cada 30s
+        this.maxRetries = options.maxRetries ?? 3;
+        this.retryDelay = options.retryDelay ?? 1000;
         this.isPolling = false;
         this.pollingTimer = null;
         
@@ -16,6 +19,7 @@ class PyRockHTTP {
         // Estado
         this.isConnected = false;
         this.lastActionTimestamp = 0;
+        this.lastStatusCheckAt = 0;
     }
     
     /**
@@ -100,13 +104,17 @@ class PyRockHTTP {
             // Tomar screenshot automáticamente cada vez que se ejecuta el polling
             await this.getLatestScreenshot();
             
-            // También verificar el estado del servidor
-            const status = await this.makeRequest('/api/status');
-            if (status.success && status.lastAction) {
-                // Actualizar timestamp de la última acción
-                if (status.lastAction.timestamp > this.lastActionTimestamp) {
-                    this.lastActionTimestamp = status.lastAction.timestamp;
+            // Consultar estado con menor frecuencia
+            const now = Date.now();
+            if (now - this.lastStatusCheckAt >= this.statusPollIntervalMs) {
+                const status = await this.makeRequest('/api/status');
+                if (status.success && status.lastAction) {
+                    // Actualizar timestamp de la última acción
+                    if (status.lastAction.timestamp > this.lastActionTimestamp) {
+                        this.lastActionTimestamp = status.lastAction.timestamp;
+                    }
                 }
+                this.lastStatusCheckAt = now;
             }
         } catch (error) {
             // Error silencioso en polling para no saturar logs
@@ -143,13 +151,32 @@ class PyRockHTTP {
             options.body = JSON.stringify(data);
         }
         
-        const response = await fetch(url, options);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        let attempt = 0;
+        while (true) {
+            try {
+                const response = await fetch(url, options);
+                if (!response.ok) {
+                    const status = response.status;
+                    const statusText = response.statusText;
+                    // Reintentos para errores temporales del proxy/upstream
+                    if (attempt < this.maxRetries && [503, 502, 504, 429].includes(status)) {
+                        attempt++;
+                        await new Promise(r => setTimeout(r, this.retryDelay * attempt));
+                        continue;
+                    }
+                    throw new Error(`HTTP ${status}: ${statusText}`);
+                }
+                return await response.json();
+            } catch (error) {
+                // Reintentar también ante errores de red
+                if (attempt < this.maxRetries) {
+                    attempt++;
+                    await new Promise(r => setTimeout(r, this.retryDelay * attempt));
+                    continue;
+                }
+                throw error;
+            }
         }
-        
-        return await response.json();
     }
     
     /**

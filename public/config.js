@@ -10,7 +10,10 @@ window.PyRockConfig = {
     serverUrl: 'https://browserweb-gn7u4.sevalla.app',
     
     // Intervalo de polling en milisegundos (cada cuánto tiempo verifica actualizaciones)
-    pollingInterval: 2000, // 1 segundo para capturas automáticas
+    pollingInterval: 5000, // 5 segundos para reducir carga
+    
+    // Intervalo para consultar estado del servidor
+    statusPollIntervalMs: 30000, // 30 segundos
     
     // Configuración de timeouts
     requestTimeout: 10000, // 10 segundos

@@ -244,13 +244,13 @@ window.addEventListener('load', async () => {
         pyrock = new PyRockHTTP({
             serverUrl: config.serverUrl || 'http://localhost:3000',
             pollingInterval: config.pollingInterval || 2000,
+            statusPollIntervalMs: config.statusPollIntervalMs || 30000,
             onLog: (message, type = 'info') => {
                 addLog(message, type);
             },
             onStatusChange: (status) => {
                 const connected = status === 'connected';
                 updateStatus(connected ? 'Conectado' : 'Desconectado', connected);
-                addLog(`Estado: ${status}`, connected ? 'success' : 'error');
             },
             onScreenshotUpdate: (screenshot) => {
                 if (screenshot && preview) {

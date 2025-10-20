@@ -21,8 +21,9 @@ let page = null;
 
 // Logger simple
 const log = {
-    info: (msg) => console.log(`[${new Date().toLocaleTimeString()}] ${msg}`),
-    error: (msg) => console.error(`[${new Date().toLocaleTimeString()}] ERROR: ${msg}`)
+    info: (...args) => console.log(`[${new Date().toLocaleTimeString()}]`, ...args),
+    warn: (...args) => console.warn(`[${new Date().toLocaleTimeString()}] WARN:`, ...args),
+    error: (...args) => console.error(`[${new Date().toLocaleTimeString()}] ERROR:`, ...args)
 };
 
 /**
@@ -248,7 +249,7 @@ async function takeScreenshot() {
         
         const screenshot = await page.screenshot({ 
             encoding: 'base64',
-            quality: 80,
+            quality: 60,
             type: 'jpeg'
         });
         
