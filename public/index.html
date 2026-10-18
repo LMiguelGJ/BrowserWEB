@@ -42,8 +42,6 @@
                             value="https://example.com/">
                         <button onclick="navigate()" class="btn btn-primary">Ir</button>
                     </div>
-                    <button onclick="navigate('https://app.apponfly.com/trial')" class="btn btn-success">🚀 AppOnFly
-                        Trial</button>
                 </div>
 
                 <div class="control-group">
@@ -62,6 +60,16 @@
                     <div class="text-input-container">
                         <input type="text" class="text-input" id="typeText" placeholder="Texto a escribir" value="hola">
                     </div>
+                    <div class="arrow-pad" role="group" aria-label="Teclas de flecha">
+                        <button class="btn btn-info arrow-up" onclick="sendKey('ArrowUp')" aria-label="Flecha arriba"
+                            title="Flecha arriba">↑</button>
+                        <button class="btn btn-info arrow-left" onclick="sendKey('ArrowLeft')" aria-label="Flecha izquierda"
+                            title="Flecha izquierda">←</button>
+                        <button class="btn btn-info arrow-down" onclick="sendKey('ArrowDown')" aria-label="Flecha abajo"
+                            title="Flecha abajo">↓</button>
+                        <button class="btn btn-info arrow-right" onclick="sendKey('ArrowRight')" aria-label="Flecha derecha"
+                            title="Flecha derecha">→</button>
+                    </div>
                     <div class="keyboard-buttons">
                         <button class="btn btn-primary" onclick="sendType()">Escribir</button>
                         <button class="btn btn-warning" onclick="sendKey('Enter')">Enter</button>
@@ -72,7 +80,6 @@
 
                 <div class="control-group">
                     <h3>🔧 Sistema</h3>
-                    <button onclick="getStatus()" class="btn btn-info">📊 Estado del Sistema</button>
                     <button onclick="initBrowser()" class="btn btn-danger">🔄 Reiniciar Navegador</button>
                 </div>
             </div>

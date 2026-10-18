@@ -79,19 +79,6 @@ async function takeScreenshot() {
     }
 }
 
-async function getStatus() {
-    if (pyrock && pyrock.isConnected) {
-        try {
-            const status = await pyrock.getStatus();
-            addLog(`Estado del navegador: ${status.browser}`, 'info');
-        } catch (error) {
-            addLog(`Error obteniendo estado: ${error.message}`, 'error');
-        }
-    } else {
-        addLog('No hay conexión con el servidor PyRock', 'error');
-    }
-}
-
 async function initBrowser() {
     if (pyrock && pyrock.isConnected) {
         try {

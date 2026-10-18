@@ -143,6 +143,7 @@ function createScriptHarness() {
     const windowListeners = new Map();
     const timers = [];
     const clicks = [];
+    const presses = [];
     let clientInstance;
     let clientOptions;
     function makeElement() {
@@ -196,6 +197,7 @@ function createScriptHarness() {
     class FakeClient {
         constructor(options) { clientOptions = options; clientInstance = this; this.isConnected = false; }
         async click(x, y) { clicks.push({ x, y }); return { success: true }; }
+        async pressKey(key) { presses.push(key); return { success: true }; }
         async connect() { this.isConnected = true; return true; }
         async getStatus() { return { browser: 'connected' }; }
         disconnect() { this.isConnected = false; }
@@ -209,7 +211,7 @@ function createScriptHarness() {
     };
     vm.runInNewContext(scriptSource, context, { filename: 'public/script.js' });
     return {
-        elements, window, timers, clicks, context,
+        elements, window, timers, clicks, presses, context,
         get client() { return clientInstance; },
         async load() { await window.dispatch('load'); return clientOptions; },
     };
@@ -472,4 +474,52 @@ test('indicator helper projects a remote point into container coordinates and to
 test('preview tooltip explains the direct click', () => {
     const html = fs.readFileSync('public/index.html', 'utf8');
     assert.match(html, /<img id="preview"[^>]*title="Haz clic sobre la imagen para enviar el clic y actualizar X\/Y\."/);
+});
+
+const ARROWS = [
+    { key: 'ArrowUp', label: 'Flecha arriba', glyph: '↑' },
+    { key: 'ArrowLeft', label: 'Flecha izquierda', glyph: '←' },
+    { key: 'ArrowDown', label: 'Flecha abajo', glyph: '↓' },
+    { key: 'ArrowRight', label: 'Flecha derecha', glyph: '→' },
+];
+
+test('keyboard group offers four labelled arrow buttons that send the matching key', () => {
+    const html = fs.readFileSync('public/index.html', 'utf8');
+    const group = html.slice(html.indexOf('Control de Teclado'), html.indexOf('Sistema</h3>'));
+    for (const { key, label, glyph } of ARROWS) {
+        const button = new RegExp(String.raw`<button[^>]*onclick="sendKey\('${key}'\)"[^>]*>\s*${glyph}\s*</button>`).exec(group);
+        assert.ok(button, `${key} button exists in the keyboard group`);
+        assert.match(button[0], new RegExp(`aria-label="${label}"`), `${key} has an accessible name`);
+        assert.match(button[0], new RegExp(`title="${label}"`), `${key} has a tooltip`);
+    }
+    assert.equal((group.match(/class="[^"]*arrow-/g) || []).length >= 4, true, 'arrow buttons are positioned by dedicated classes');
+    for (const key of ['Enter', 'Tab', 'Escape']) assert.ok(group.includes(`sendKey('${key}')`), `${key} is kept`);
+});
+
+test('removed controls are gone from the interface', () => {
+    const html = fs.readFileSync('public/index.html', 'utf8');
+    assert.doesNotMatch(html, /apponfly/i);
+    assert.doesNotMatch(html, /getStatus\(\)|Estado del Sistema/);
+    assert.match(html, /initBrowser\(\)/, 'restart button is kept');
+});
+
+test('each arrow sends exactly its key through REST and needs a connection', async () => {
+    const harness = createScriptHarness();
+    await harness.load();
+    for (const { key } of ARROWS) await harness.context.sendKey(key);
+    assert.deepEqual(harness.presses, ['ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight']);
+    const offline = createScriptHarness();
+    await offline.load();
+    offline.client.isConnected = false;
+    await offline.context.sendKey('ArrowUp');
+    assert.deepEqual(offline.presses, []);
+});
+
+test('arrow pad is laid out as a cross', () => {
+    const css = fs.readFileSync('public/styles.css', 'utf8');
+    assert.match(css, /\.arrow-pad\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*repeat\(3,\s*1fr\)/);
+    assert.match(css, /\.arrow-up\s*\{[^}]*grid-column:\s*2[^}]*grid-row:\s*1/);
+    for (const [name, column] of [['left', 1], ['down', 2], ['right', 3]]) {
+        assert.match(css, new RegExp(String.raw`\.arrow-${name}\s*\{[^}]*grid-column:\s*${column}[^}]*grid-row:\s*2`));
+    }
 });
