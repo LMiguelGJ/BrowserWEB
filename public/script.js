@@ -104,9 +104,15 @@ async function initBrowser() {
     }
 }
 
+// Parses a coordinate field; only a missing or invalid value falls back to the default, so 0 stays valid.
+function readCoordinate(id, fallback) {
+    const value = parseInt(document.getElementById(id).value, 10);
+    return Number.isNaN(value) ? fallback : value;
+}
+
 async function sendClick() {
-    const x = parseInt(document.getElementById('clickX').value) || 600;
-    const y = parseInt(document.getElementById('clickY').value) || 620;
+    const x = readCoordinate('clickX', 600);
+    const y = readCoordinate('clickY', 620);
 
     // Mostrar indicador visual en la imagen del preview
     const preview = document.getElementById('preview');
@@ -163,42 +169,53 @@ document.getElementById('urlInput').addEventListener('keypress', (e) => {
     }
 });
 
-// Función auxiliar para calcular las coordenadas del indicador considerando object-fit: contain
+// Where the object-fit: contain image is actually drawn, in viewport coordinates.
+// It reads the current rendered rectangle on every call, so resizes, scrolling and the
+// hover zoom are always reflected. Returns null while the geometry is unusable.
+function getPreviewGeometry(image) {
+    if (!image || !(image.naturalWidth > 0) || !(image.naturalHeight > 0)) return null;
+    const rect = image.getBoundingClientRect();
+    if (![rect.left, rect.top, rect.width, rect.height].every(Number.isFinite)) return null;
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    const scale = Math.min(rect.width / image.naturalWidth, rect.height / image.naturalHeight);
+    const width = image.naturalWidth * scale;
+    const height = image.naturalHeight * scale;
+    return {
+        scale, width, height,
+        left: rect.left + (rect.width - width) / 2,
+        top: rect.top + (rect.height - height) / 2
+    };
+}
+
+// Converts a viewport point into remote browser coordinates, or null over the letterbox bands.
+function getRemotePoint(image, clientX, clientY) {
+    const geometry = getPreviewGeometry(image);
+    if (!geometry) return null;
+    const localX = clientX - geometry.left;
+    const localY = clientY - geometry.top;
+    if (!(localX >= 0 && localY >= 0 && localX < geometry.width && localY < geometry.height)) return null;
+    return {
+        x: Math.min(Math.floor(localX / geometry.scale), image.naturalWidth - 1),
+        y: Math.min(Math.floor(localY / geometry.scale), image.naturalHeight - 1)
+    };
+}
+
+// Projects a remote point into .preview-container coordinates, where indicators are positioned.
+// Without usable geometry it returns NaN coordinates, which showClickIndicator ignores.
 function getIndicatorPosition(preview, realX, realY) {
-    const rect = preview.getBoundingClientRect();
-    const containerWidth = rect.width;
-    const containerHeight = rect.height;
-    const imageAspectRatio = preview.naturalWidth / preview.naturalHeight;
-    const containerAspectRatio = containerWidth / containerHeight;
-
-    let displayedWidth, displayedHeight, offsetX, offsetY;
-
-    if (imageAspectRatio > containerAspectRatio) {
-        // La imagen se ajusta por ancho
-        displayedWidth = containerWidth;
-        displayedHeight = containerWidth / imageAspectRatio;
-        offsetX = 0;
-        offsetY = (containerHeight - displayedHeight) / 2;
-    } else {
-        // La imagen se ajusta por alto
-        displayedWidth = containerHeight * imageAspectRatio;
-        displayedHeight = containerHeight;
-        offsetX = (containerWidth - displayedWidth) / 2;
-        offsetY = 0;
-    }
-
-    // Convertir coordenadas reales a coordenadas del display
-    const scaleX = displayedWidth / preview.naturalWidth;
-    const scaleY = displayedHeight / preview.naturalHeight;
-
-    const displayX = (realX * scaleX) + offsetX;
-    const displayY = (realY * scaleY) + offsetY;
-
-    return { x: displayX, y: displayY };
+    const geometry = getPreviewGeometry(preview);
+    const container = document.querySelector('.preview-container');
+    if (!geometry || !container) return { x: NaN, y: NaN };
+    const box = container.getBoundingClientRect();
+    return {
+        x: geometry.left + realX * geometry.scale - box.left - (container.clientLeft || 0),
+        y: geometry.top + realY * geometry.scale - box.top - (container.clientTop || 0)
+    };
 }
 
 // Función para mostrar indicador visual del click
 function showClickIndicator(x, y) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     // Crear el indicador
     const indicator = document.createElement('div');
     indicator.className = 'click-indicator';
@@ -217,17 +234,13 @@ function showClickIndicator(x, y) {
     }, 1000);
 }
 
-// Click en la imagen para hacer click en las coordenadas de los campos
+// Click on the image: map the mouse position to remote coordinates, mirror them into the
+// X/Y fields and send a single click (sendClick draws the one indicator).
 preview.addEventListener('click', (event) => {
-    // Usar las coordenadas de los campos de entrada
-    const x = parseInt(document.getElementById('clickX').value) || 600;
-    const y = parseInt(document.getElementById('clickY').value) || 620;
-
-    // Mostrar indicador visual en la posición correspondiente a esas coordenadas
-    const position = getIndicatorPosition(preview, x, y);
-    showClickIndicator(position.x, position.y);
-
-    // Enviar click usando las coordenadas de los campos
+    const point = getRemotePoint(preview, event.clientX, event.clientY);
+    if (!point) return;
+    document.getElementById('clickX').value = String(point.x);
+    document.getElementById('clickY').value = String(point.y);
     sendClick();
 });
 

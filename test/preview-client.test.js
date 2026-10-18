@@ -142,12 +142,15 @@ function createScriptHarness() {
     const elements = new Map();
     const windowListeners = new Map();
     const timers = [];
+    const clicks = [];
+    let clientInstance;
     let clientOptions;
     function makeElement() {
         const eventListeners = new Map();
         return {
             style: {}, children: [], textContent: '', value: '', naturalWidth: 0, naturalHeight: 0,
-            complete: false,
+            complete: false, rect: { left: 0, top: 0, width: 0, height: 0 }, clientLeft: 0, clientTop: 0,
+            getBoundingClientRect() { return this.rect; },
             addEventListener(type, listener, options = {}) {
                 const entries = eventListeners.get(type) || [];
                 entries.push({ listener, once: options.once === true });
@@ -157,10 +160,10 @@ function createScriptHarness() {
                 eventListeners.set(type, (eventListeners.get(type) || []).filter(entry => entry.listener !== listener));
             },
             listenerCount(type) { return (eventListeners.get(type) || []).length; },
-            dispatch(type) {
+            dispatch(type, extra = {}) {
                 const entries = [...(eventListeners.get(type) || [])];
                 for (const entry of entries) {
-                    entry.listener({ type, target: this });
+                    entry.listener({ type, target: this, ...extra });
                     if (entry.once) this.removeEventListener(type, entry.listener);
                 }
             },
@@ -176,7 +179,8 @@ function createScriptHarness() {
             return elements.get(id);
         },
         createElement: makeElement,
-        querySelector: () => makeElement(),
+        querySelector: selector => (selector === '.preview-container'
+            ? document.getElementById('.preview-container') : makeElement()),
     };
     const window = {
         PyRockConfig: { serverUrl: 'http://localhost:3000' },
@@ -190,7 +194,8 @@ function createScriptHarness() {
         }
     };
     class FakeClient {
-        constructor(options) { clientOptions = options; this.isConnected = false; }
+        constructor(options) { clientOptions = options; clientInstance = this; this.isConnected = false; }
+        async click(x, y) { clicks.push({ x, y }); return { success: true }; }
         async connect() { this.isConnected = true; return true; }
         async getStatus() { return { browser: 'connected' }; }
         disconnect() { this.isConnected = false; }
@@ -204,8 +209,31 @@ function createScriptHarness() {
     };
     vm.runInNewContext(scriptSource, context, { filename: 'public/script.js' });
     return {
-        elements, window, timers,
+        elements, window, timers, clicks, context,
+        get client() { return clientInstance; },
         async load() { await window.dispatch('load'); return clientOptions; },
+    };
+}
+
+// Geometry fixture: a 1000x500 remote screen drawn with object-fit: contain into a
+// 500x400 element at (10, 20), i.e. scale 0.5 with 75px letterbox bands above and below.
+async function createClickHarness({ rect = { left: 10, top: 20, width: 500, height: 400 },
+    natural = { width: 1000, height: 500 }, connected = true } = {}) {
+    const harness = createScriptHarness();
+    await harness.load();
+    harness.client.isConnected = connected;
+    const preview = harness.elements.get('preview');
+    preview.naturalWidth = natural.width;
+    preview.naturalHeight = natural.height;
+    preview.rect = rect;
+    const container = harness.context.document.querySelector('.preview-container');
+    container.rect = { left: 5, top: 10, width: 600, height: 500 };
+    container.clientLeft = 2;
+    container.clientTop = 2;
+    const field = id => harness.context.document.getElementById(id);
+    return {
+        ...harness, preview, container, field,
+        click(clientX, clientY) { preview.dispatch('click', { clientX, clientY }); },
     };
 }
 
@@ -318,4 +346,130 @@ test('stale image completion after disconnect does not ACK', async () => {
     client.disconnect();
     complete();
     assert.deepEqual(sockets[0].sent, []);
+});
+
+test('preview click converts contained-image points to remote coordinates', async () => {
+    // Content box: x 10..510, y 95..345; scale 0.5.
+    const cases = [
+        { at: [260, 220], expected: { x: 500, y: 250 }, label: 'center' },
+        { at: [10, 95], expected: { x: 0, y: 0 }, label: 'top-left pixel' },
+        { at: [509.9, 344.9], expected: { x: 999, y: 499 }, label: 'bottom-right pixel stays in range' },
+        { at: [13.9, 98.9], expected: { x: 7, y: 7 }, label: 'floor, not round' },
+    ];
+    for (const { at, expected, label } of cases) {
+        const harness = await createClickHarness();
+        harness.click(...at);
+        assert.deepEqual(harness.clicks, [expected], label);
+        assert.equal(harness.field('clickX').value, String(expected.x), `${label}: X field`);
+        assert.equal(harness.field('clickY').value, String(expected.y), `${label}: Y field`);
+    }
+    // Vertical fit: 500x1000 screen in the same box leaves 75px side bands, scale 0.5.
+    const tall = await createClickHarness({ natural: { width: 500, height: 1000 }, rect: { left: 10, top: 20, width: 400, height: 500 } });
+    tall.click(10 + 75 + 50, 20 + 100);
+    assert.deepEqual(tall.clicks, [{ x: 100, y: 200 }]);
+    // Upscaled preview (scale 5) and a page that is scrolled away from the origin.
+    const small = await createClickHarness({ natural: { width: 100, height: 50 }, rect: { left: 300, top: -40, width: 500, height: 400 } });
+    small.click(300 + 5 * 7 + 1, -40 + 75 + 5 * 3 + 1);
+    assert.deepEqual(small.clicks, [{ x: 7, y: 3 }]);
+});
+
+test('preview click recomputes geometry from the current rendered rectangle', async () => {
+    const harness = await createClickHarness();
+    harness.click(260, 220);
+    // Hover zoom (scale 1.02 around the center) and a resize change the rectangle between clicks.
+    harness.preview.rect = { left: 7.5, top: 12, width: 510, height: 408 };
+    harness.click(7.5 + 255, 12 + 204);
+    harness.preview.rect = { left: 0, top: 0, width: 1000, height: 500 };
+    harness.click(500, 250);
+    assert.deepEqual(harness.clicks, [{ x: 500, y: 250 }, { x: 500, y: 250 }, { x: 500, y: 250 }]);
+});
+
+test('preview click ignores letterbox margins, outer edges and an unready image', async () => {
+    const margins = [[260, 94], [260, 345], [9, 220], [510, 220], [260, 20], [Number.NaN, 220]];
+    for (const point of margins) {
+        const harness = await createClickHarness();
+        harness.field('clickX').value = '11';
+        harness.field('clickY').value = '12';
+        harness.click(...point);
+        assert.deepEqual(harness.clicks, [], `no send for ${point}`);
+        assert.equal(harness.field('clickX').value, '11');
+        assert.equal(harness.field('clickY').value, '12');
+        assert.equal(harness.container.children.length, 0, 'no indicator');
+    }
+    const unready = await createClickHarness({ natural: { width: 0, height: 0 } });
+    unready.click(260, 220);
+    const hidden = await createClickHarness({ rect: { left: 0, top: 0, width: 0, height: 0 } });
+    hidden.click(0, 0);
+    for (const harness of [unready, hidden]) {
+        assert.deepEqual(harness.clicks, []);
+        assert.equal(harness.container.children.length, 0);
+    }
+});
+
+test('one preview click sends one REST click and draws one correctly placed indicator', async () => {
+    const harness = await createClickHarness();
+    harness.click(260, 220);
+    assert.equal(harness.clicks.length, 1);
+    assert.equal(harness.container.children.length, 1);
+    // Viewport point (260, 220) minus the container origin (5, 10) and its 2px border.
+    assert.deepEqual(
+        { left: harness.container.children[0].style.left, top: harness.container.children[0].style.top },
+        { left: '253px', top: '208px' });
+});
+
+test('direct click updates the fields even when REST is disconnected, without sending', async () => {
+    const harness = await createClickHarness({ connected: false });
+    harness.click(260, 220);
+    assert.equal(harness.field('clickX').value, '500');
+    assert.equal(harness.field('clickY').value, '250');
+    assert.deepEqual(harness.clicks, []);
+});
+
+test('zero coordinates are preserved by direct clicks and the manual button', async () => {
+    const direct = await createClickHarness();
+    direct.click(10, 95);
+    assert.deepEqual(direct.clicks, [{ x: 0, y: 0 }]);
+
+    const manual = await createClickHarness();
+    manual.field('clickX').value = '0';
+    manual.field('clickY').value = '0';
+    await manual.context.sendClick();
+    assert.deepEqual(manual.clicks, [{ x: 0, y: 0 }]);
+
+    const mixed = await createClickHarness();
+    mixed.field('clickX').value = '0';
+    mixed.field('clickY').value = '40';
+    await mixed.context.sendClick();
+    assert.deepEqual(mixed.clicks, [{ x: 0, y: 40 }]);
+});
+
+test('manual coordinate button keeps old defaults for empty values and needs a connection', async () => {
+    for (const invalid of ['', 'abc']) {
+        const harness = await createClickHarness();
+        harness.field('clickX').value = invalid;
+        harness.field('clickY').value = invalid;
+        await harness.context.sendClick();
+        assert.deepEqual(harness.clicks, [{ x: 600, y: 620 }], `defaults for '${invalid}'`);
+    }
+    const offline = await createClickHarness({ connected: false });
+    offline.field('clickX').value = '5';
+    offline.field('clickY').value = '6';
+    await offline.context.sendClick();
+    assert.deepEqual(offline.clicks, []);
+});
+
+test('indicator helper projects a remote point into container coordinates and tolerates missing geometry', async () => {
+    const harness = await createClickHarness();
+    const position = harness.context.getIndicatorPosition(harness.preview, 500, 250);
+    assert.deepEqual({ x: position.x, y: position.y }, { x: 253, y: 208 });
+    harness.preview.rect = { left: 0, top: 0, width: 0, height: 0 };
+    const missing = harness.context.getIndicatorPosition(harness.preview, 500, 250);
+    assert.equal(Number.isFinite(missing.x) || Number.isFinite(missing.y), false);
+    harness.context.showClickIndicator(missing.x, missing.y);
+    assert.equal(harness.container.children.length, 0, 'non-finite positions draw nothing');
+});
+
+test('preview tooltip explains the direct click', () => {
+    const html = fs.readFileSync('public/index.html', 'utf8');
+    assert.match(html, /<img id="preview"[^>]*title="Haz clic sobre la imagen para enviar el clic y actualizar X\/Y\."/);
 });
