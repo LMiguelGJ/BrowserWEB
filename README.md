@@ -1,13 +1,13 @@
 # 🚀 PyRock - Automatización con Puppeteer y Docker
 
-**PyRock** es una aplicación de control remoto de navegador que utiliza **Puppeteer** para automatización web y **WebSocket** para comunicación en tiempo real. Permite controlar un navegador de forma remota a través de una interfaz web moderna, optimizada para ejecutarse en contenedores Docker.
+**PyRock** es una aplicación de control remoto de navegador que utiliza **Puppeteer** para automatización web, **REST** para los controles y **WebSocket/CDP** para el preview en vivo. Permite controlar un navegador de forma remota a través de una interfaz web moderna, optimizada para ejecutarse en contenedores Docker.
 
 ## ✨ Características
 
 - 🌐 **Control remoto de navegador** con Puppeteer
-- 📡 **Comunicación en tiempo real** via WebSocket
+- 📡 **Preview en vivo** por WebSocket con fotogramas CDP de Chrome
 - 🖱️ **Control de mouse y teclado** desde la interfaz web
-- 📸 **Capturas de pantalla en vivo** cada 1 segundo
+- 📸 **Captura manual** por REST, sin polling automático de imágenes
 - 🎨 **Interfaz moderna y responsiva**
 - 🐳 **Optimizado para Docker** con Chrome headless
 - 🔄 **Recuperación automática** del navegador
@@ -29,12 +29,14 @@
 PyRock/
 ├── public/
 │   ├── index.html              # Frontend con interfaz de control
-│   ├── script.js               # Lógica del cliente WebSocket
+│   ├── script.js               # Interfaz y renderizado del preview
 │   ├── styles.css              # Estilos de la interfaz
-│   ├── PyRockCommands.js       # Comandos de automatización
+│   ├── PyRockHTTP.js           # Controles REST y conexión del preview
 │   ├── PyRockScriptParser.js   # Parser de scripts
-│   └── screenshot.png          # Captura de pantalla actual
-├── server.js                   # Servidor principal con Express y WebSocket
+│   └── config.js               # URL del servidor y consulta de estado
+├── server.js                   # Servidor Express y WebSocket en el mismo puerto
+├── screencast.js               # Ciclo de vida CDP y control de flujo del preview
+├── test/                       # Pruebas unitarias y de integración local
 ├── package.json                # Configuración de dependencias
 ├── Dockerfile                  # Configuración optimizada para Docker
 ├── .dockerignore              # Archivos a ignorar en Docker
@@ -104,21 +106,36 @@ PyRock/
    - Escribe texto en el campo correspondiente
    - Presiona teclas especiales (Enter, Tab, etc.)
 
-4. **Capturas de Pantalla**
-   - Se actualizan automáticamente cada segundo
-   - Puedes forzar una captura manual
+4. **Preview y captura manual**
+   - Chrome emite fotogramas JPEG al visor cuando están disponibles; no se garantiza una tasa fija de FPS ni se transmite audio.
+   - El visor conserva la imagen anterior al perder la conexión y muestra su estado de reconexión.
+   - El botón de captura manual sigue solicitando una imagen nueva por REST.
 
-### Comandos WebSocket
+### Transporte y límites
 
-La aplicación soporta los siguientes comandos via WebSocket:
+Todos los controles conservan su API HTTP:
 
-- `navigate` - Navegar a una URL
-- `click` - Hacer clic en coordenadas específicas
-- `type` - Escribir texto
-- `key` - Presionar teclas especiales
-- `screenshot` - Capturar pantalla
-- `status` - Verificar estado del navegador
-- `init` - Reinicializar navegador
+| Ruta | Acción |
+|------|--------|
+| `POST /api/navigate` | Navegar a una URL |
+| `POST /api/click` | Hacer clic en coordenadas |
+| `POST /api/type` | Escribir texto |
+| `POST /api/key` | Presionar una tecla |
+| `POST /api/screenshot` | Crear una captura manual |
+| `GET /api/screenshot` | Obtener la última captura manual guardada, no una imagen nueva |
+| `GET /api/status` | Consultar el estado |
+| `POST /api/init` | Reinicializar el navegador |
+
+El preview usa `/ws/preview` en el mismo puerto que HTTP: `ws://localhost:3000/ws/preview` en local y `wss://<dominio>/ws/preview` con HTTPS. El cliente deriva esta URL de `serverUrl`. No se expone el endpoint CDP de Chrome.
+
+Hay **un navegador y una página compartidos**, no sesiones independientes. Varios visores pueden observarlos; cerrar un visor no cierra el navegador. Cada visor confirma el renderizado y recibe el fotograma más reciente disponible, sin acumular una cola de imágenes. No hay capturas automáticas por REST como respaldo: si falla el streaming, la captura manual permanece disponible.
+
+### Proxy y diagnóstico del preview
+
+- El proxy debe permitir el upgrade a WebSocket y mantener la conexión en `/ws/preview`, conservando Host/Origin del dominio público. El visor acepta conexiones del mismo host; esto **no reemplaza autenticación**.
+- En las herramientas de desarrollo del navegador, buscá la conexión WebSocket y sus mensajes. No deberían aparecer consultas periódicas a `/api/screenshot`.
+- Si REST funciona pero no llegan fotogramas, revisá el upgrade WebSocket, el estado del navegador y los logs del servidor. Una página estática puede no emitir nuevos fotogramas y no implica un fallo.
+- Verificar el preview en local no demuestra que el proxy de producción admita `wss`. Esa comprobación debe realizarse por separado antes de declarar corregido el despliegue.
 
 ## 🐳 Configuración Docker
 
@@ -141,15 +158,19 @@ La aplicación soporta los siguientes comandos via WebSocket:
 
 ```bash
 npm start          # Ejecutar en producción
+npm test           # Pruebas unitarias e integración con Chromium local
 npm run dev        # Ejecutar en desarrollo
 npm run docker:build  # Construir imagen Docker
 npm run docker:run    # Ejecutar contenedor
 npm run docker:dev    # Ejecutar con volumen montado
 ```
 
+Las pruebas de integración levantan un servidor temporal en loopback y navegadores aislados con páginas locales; no necesitan sitios externos ni datos reales. Requieren las dependencias instaladas y el Chromium de Puppeteer disponible. Una falta de Chromium es una prueba fallida, no una verificación omitida silenciosamente.
+
 ### Estructura de Archivos
 
-- `server.js` - Servidor principal con toda la lógica
+- `server.js` - Servidor principal y controles REST
+- `screencast.js` - Transmisión CDP y limpieza del preview
 - `public/` - Archivos estáticos del frontend
 - `Dockerfile` - Configuración optimizada para Docker
 - `.dockerignore` - Exclusiones para Docker build

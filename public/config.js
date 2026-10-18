@@ -9,9 +9,6 @@ window.PyRockConfig = {
     // - Nube: 'https://tu-servidor.com' o 'http://tu-ip:3000'
     serverUrl: 'https://browserweb-gn7u4.sevalla.app',
     
-    // Intervalo de polling en milisegundos (cada cuánto tiempo verifica actualizaciones)
-    pollingInterval: 5000, // 5 segundos para reducir carga
-    
     // Intervalo para consultar estado del servidor
     statusPollIntervalMs: 30000, // 30 segundos
     

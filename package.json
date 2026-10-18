@@ -6,6 +6,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "test": "node --test test/*.test.js",
     "dev": "NODE_ENV=development node server.js",
     "docker:build": "docker build -t pyrock .",
     "docker:run": "docker run -p 3000:3000 pyrock",
@@ -27,7 +28,8 @@
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
-    "puppeteer": "^24.25.0"
+    "puppeteer": "^24.25.0",
+    "ws": "^8.22.0"
   },
   "engines": {
     "node": ">=18.0.0"

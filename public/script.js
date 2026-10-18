@@ -13,6 +13,10 @@ const statusDot = document.getElementById('statusDot');
 const statusText = document.getElementById('statusText');
 const logContainer = document.getElementById('logContainer');
 const lastUpdate = document.getElementById('lastUpdate');
+const previewHelp = document.getElementById('previewHelp');
+let currentPreviewStatus = null;
+let pendingFrameRender = false;
+let queuedManualScreenshot = null;
 
 // Elementos del DOM para scripts
 const scriptEditor = document.getElementById('scriptEditor');
@@ -55,7 +59,6 @@ async function navigate(url = null) {
     if (pyrock && pyrock.isConnected) {
         try {
             await pyrock.navigate(targetUrl);
-            // El screenshot se actualizará automáticamente via polling
         } catch (error) {
             addLog(`Error navegando: ${error.message}`, 'error');
         }
@@ -115,7 +118,6 @@ async function sendClick() {
     if (pyrock && pyrock.isConnected) {
         try {
             await pyrock.click(x, y);
-            // El screenshot se actualizará automáticamente via polling
         } catch (error) {
             addLog(`Error haciendo click: ${error.message}`, 'error');
         }
@@ -130,7 +132,6 @@ async function sendType() {
     if (pyrock && pyrock.isConnected) {
         try {
             await pyrock.type(text);
-            // El screenshot se actualizará automáticamente via polling
         } catch (error) {
             addLog(`Error escribiendo texto: ${error.message}`, 'error');
         }
@@ -143,7 +144,6 @@ async function sendKey(key) {
     if (pyrock && pyrock.isConnected) {
         try {
             await pyrock.pressKey(key);
-            // El screenshot se actualizará automáticamente via polling
         } catch (error) {
             addLog(`Error presionando tecla: ${error.message}`, 'error');
         }
@@ -243,7 +243,6 @@ window.addEventListener('load', async () => {
         
         pyrock = new PyRockHTTP({
             serverUrl: config.serverUrl || 'http://localhost:3000',
-            pollingInterval: config.pollingInterval || 2000,
             statusPollIntervalMs: config.statusPollIntervalMs || 30000,
             onLog: (message, type = 'info') => {
                 addLog(message, type);
@@ -252,31 +251,75 @@ window.addEventListener('load', async () => {
                 const connected = status === 'connected';
                 updateStatus(connected ? 'Conectado' : 'Desconectado', connected);
             },
-            onScreenshotUpdate: (screenshot) => {
-                if (screenshot && preview) {
-                    // El servidor envía la imagen ya con el formato data:image/jpeg;base64,
-                    preview.onload = () => {
-                        preview.style.display = 'block';
-                        loadingText.style.display = 'none';
-                        lastUpdate.textContent = `Última actualización: ${new Date().toLocaleTimeString()}`;
-                        // Comentado para reducir spam en logs: addLog('Screenshot actualizado', 'success');
-                    };
-                    
-                    preview.onerror = () => {
-                        preview.style.display = 'none';
-                        loadingText.style.display = 'block';
-                        loadingText.textContent = '❌ Error cargando imagen';
-                        addLog('Error al mostrar screenshot', 'error');
-                    };
-                    
-                    preview.src = screenshot;
-                } else {
-                    // No hay screenshot disponible, mostrar estado de espera
-                    preview.style.display = 'none';
-                    loadingText.style.display = 'block';
-                    loadingText.textContent = '⏳ Esperando screenshot...';
-                    // Comentado para reducir spam: addLog('Esperando screenshot del servidor', 'info');
+            onPreviewStatus: (state, message) => {
+                const labels = {
+                    starting: '⏳ Vista previa: conectando…',
+                    live: '🟢 Vista previa en vivo',
+                    reconnecting: '⏸️ Vista previa pausada; intentando reconectar…',
+                    unavailable: `⚠️ Vista previa no disponible${message ? `: ${message}` : ''}`
+                };
+                const label = labels[state] || 'Vista previa: estado desconocido';
+                if (previewHelp) previewHelp.textContent = label;
+                if (state !== currentPreviewStatus) {
+                    currentPreviewStatus = state;
+                    addLog(message ? `${label}` : label, state === 'unavailable' ? 'error' : 'info');
                 }
+                if (state !== 'live' && (!preview || !preview.complete || preview.naturalWidth === 0)) {
+                    loadingText.style.display = 'block';
+                    loadingText.textContent = label;
+                } else if (state === 'live') {
+                    loadingText.style.display = 'none';
+                }
+            },
+            onScreenshotUpdate: (screenshot, onRenderComplete) => {
+                if (!onRenderComplete && pendingFrameRender) {
+                    queuedManualScreenshot = screenshot;
+                    return;
+                }
+                if (!screenshot || !preview) {
+                    loadingText.style.display = 'block';
+                    loadingText.textContent = '⏳ Esperando fotograma de vista previa…';
+                    if (onRenderComplete) onRenderComplete(new Error('No preview image element'));
+                    return;
+                }
+
+                let completed = false;
+                if (onRenderComplete) pendingFrameRender = true;
+                const finish = error => {
+                    if (completed) return;
+                    completed = true;
+                    if (onRenderComplete) {
+                        pendingFrameRender = false;
+                        onRenderComplete(error);
+                        if (queuedManualScreenshot) {
+                            const manualScreenshot = queuedManualScreenshot;
+                            queuedManualScreenshot = null;
+                            preview.src = manualScreenshot;
+                        }
+                    }
+                };
+                const cleanupListeners = () => {
+                    preview.removeEventListener('load', handleLoad);
+                    preview.removeEventListener('error', handleError);
+                };
+                const handleLoad = () => {
+                    cleanupListeners();
+                    preview.style.display = 'block';
+                    loadingText.style.display = 'none';
+                    lastUpdate.textContent = `Última actualización: ${new Date().toLocaleTimeString()}`;
+                    finish();
+                };
+                const handleError = () => {
+                    cleanupListeners();
+                    preview.style.display = 'block';
+                    loadingText.style.display = 'block';
+                    loadingText.textContent = '❌ Error cargando imagen; se conserva la vista previa anterior si está disponible';
+                    addLog('Error al mostrar imagen de preview', 'error');
+                    finish(new Error('Error rendering preview image'));
+                };
+                preview.addEventListener('load', handleLoad);
+                preview.addEventListener('error', handleError);
+                preview.src = screenshot;
             }
         });
 
@@ -286,15 +329,6 @@ window.addEventListener('load', async () => {
             if (connected) {
                 addLog('PyRock HTTP inicializado correctamente', 'success');
                 
-                // Obtener estado inicial
-                setTimeout(async () => {
-                    try {
-                        const status = await pyrock.getStatus();
-                        addLog(`Estado del servidor: ${status.browser}`, 'info');
-                    } catch (error) {
-                        addLog(`Error obteniendo estado: ${error.message}`, 'error');
-                    }
-                }, 1000);
             } else {
                 addLog('Error conectando al servidor', 'error');
                 updateStatus('Error de conexión', false);
@@ -308,8 +342,7 @@ window.addEventListener('load', async () => {
         updateStatus('Error de librería', false);
     }
 
-    // Preview automático ahora se maneja únicamente a través de PyRockHTTP polling
-    addLog('Sistema de preview iniciado via PyRockHTTP polling', 'success');
+    addLog('Vista previa en vivo por WebSocket; los controles siguen usando REST', 'success');
 
     // Inicializar parser de scripts
     if (typeof PyRockScriptParser !== 'undefined') {
@@ -324,8 +357,10 @@ window.addEventListener('load', async () => {
         addLog('Advertencia: Parser de scripts no disponible', 'error');
     }
 
-    // Cargar preview inicial
-    setTimeout(refreshPreview, 1000);
+});
+
+window.addEventListener('pagehide', () => {
+    if (pyrock) pyrock.disconnect();
 });
 
 // ===== FUNCIONES DE MANEJO DE SCRIPTS =====

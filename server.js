@@ -10,6 +10,8 @@ const express = require('express');
 const http = require('http');
 const puppeteer = require('puppeteer');
 const path = require('path');
+const WebSocket = require('ws');
+const { createScreencastController } = require('./screencast');
 
 // Configuración
 const PORT = process.env.PORT || 3000;
@@ -18,6 +20,10 @@ const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 // Variables globales
 let browser = null;
 let page = null;
+let previewController = null;
+let initQueue = Promise.resolve();
+let shuttingDown = false;
+let shutdownCleanupError = null;
 
 // Logger simple
 const log = {
@@ -51,19 +57,43 @@ function getBrowserConfig() {
 /**
  * Inicializar navegador (como fetch_html en Python)
  */
-async function initBrowser() {
+function initBrowser() {
+    if (shuttingDown) return Promise.resolve(false);
+    const result = initQueue.then(initBrowserOnce, initBrowserOnce);
+    initQueue = result.catch(() => {});
+    return result;
+}
+
+async function initBrowserOnce() {
     try {
+        if (shuttingDown) return false;
+        if (previewController) await previewController.setUnavailable('Browser is restarting');
+        if (shuttingDown) return false;
         if (browser) {
+            const previousBrowser = browser;
             try {
-                await browser.close();
+                await previousBrowser.close();
             } catch (err) {
                 log.error('Error cerrando navegador:', err);
             }
+            if (browser === previousBrowser) {
+                browser = null;
+                page = null;
+            }
         }
-        
+        if (shuttingDown) return false;
         log.info('Iniciando navegador...');
-        browser = await puppeteer.launch(getBrowserConfig());
-        page = await browser.newPage();
+        const launchedBrowser = await puppeteer.launch(getBrowserConfig());
+        if (shuttingDown) {
+            try { await launchedBrowser.close(); }
+            catch (error) {
+                shutdownCleanupError ||= error;
+                log.error('Error cerrando navegador iniciado durante shutdown:', error.message);
+            }
+            return false;
+        }
+        browser = launchedBrowser;
+        page = await launchedBrowser.newPage();
         
         // Configuración avanzada para evitar detección de bots
         await page.setViewport({ width: 1366, height: 768 }); // Resolución más común
@@ -117,9 +147,28 @@ async function initBrowser() {
             );
         });
         
+        if (shuttingDown) return false;
+        const initializedBrowser = browser;
+        const initializedPage = page;
+        if (initializedBrowser && typeof initializedBrowser.once === 'function') {
+            initializedBrowser.once('disconnected', () => {
+                if (browser !== initializedBrowser) return;
+                if (previewController) previewController.setUnavailable('Browser disconnected').catch(() => {});
+                browser = null;
+                page = null;
+            });
+        }
+        if (initializedPage && typeof initializedPage.once === 'function') {
+            initializedPage.once('close', () => {
+                if (page !== initializedPage) return;
+                if (previewController) previewController.setUnavailable('Browser page closed').catch(() => {});
+            });
+        }
+        if (previewController) await previewController.setPage(initializedPage);
         log.info('✅ Navegador iniciado correctamente');
         return true;
     } catch (error) {
+        if (previewController) await previewController.setUnavailable('Browser initialization failed').catch(() => {});
         log.error(`Error iniciando navegador: ${error.message}`);
         return false;
     }
@@ -314,17 +363,49 @@ async function pressKey(key) {
 // Crear servidor Express
 const app = express();
 const server = http.createServer(app);
+const previewWss = new WebSocket.Server({ noServer: true, perMessageDeflate: false, maxPayload: 1024 });
+previewController = createScreencastController({ getPage: () => page });
+
+function previewUpgradeAllowed(request) {
+    if (!request || !request.headers) return false;
+    let pathname;
+    try { pathname = new URL(request.url, 'http://localhost').pathname; }
+    catch { return false; }
+    if (pathname !== '/ws/preview') return false;
+    const host = request.headers.host;
+    const origin = request.headers.origin;
+    if (typeof host !== 'string' || !host || typeof origin !== 'string' || !origin) return false;
+    try {
+        const parsed = new URL(origin);
+        return ['http:', 'https:'].includes(parsed.protocol) && !parsed.username && !parsed.password && parsed.pathname === '/' && !parsed.search && !parsed.hash && parsed.host.toLowerCase() === host.toLowerCase();
+    } catch {
+        return false;
+    }
+}
+
+server.previewUpgradeAllowed = previewUpgradeAllowed;
+server.on('upgrade', (request, socket, head) => {
+    if (!previewUpgradeAllowed(request)) {
+        socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+        socket.destroy();
+        return;
+    }
+    previewWss.handleUpgrade(request, socket, head, ws => {
+        previewWss.emit('connection', ws, request);
+    });
+});
+previewWss.on('connection', socket => previewController.addViewer(socket));
 
 // Servir archivos estáticos
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Ruta principal
-app.get('/', (req, res) => {
+app.get('/', (_req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // Health check
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
     res.json({ 
         status: 'ok', 
         browser: browser ? 'connected' : 'disconnected',
@@ -342,7 +423,7 @@ let lastAction = { type: 'status', message: 'Servidor iniciado', timestamp: Date
 // API Endpoints REST
 
 // Estado del servidor y navegador
-app.get('/api/status', (req, res) => {
+app.get('/api/status', (_req, res) => {
     res.json({
         success: true,
         browser: browser ? 'connected' : 'disconnected',
@@ -369,7 +450,7 @@ app.post('/api/navigate', async (req, res) => {
 });
 
 // Tomar screenshot
-app.post('/api/screenshot', async (req, res) => {
+app.post('/api/screenshot', async (_req, res) => {
     try {
         const result = await takeScreenshot();
         if (result.success) {
@@ -383,7 +464,7 @@ app.post('/api/screenshot', async (req, res) => {
 });
 
 // Obtener último screenshot
-app.get('/api/screenshot', (req, res) => {
+app.get('/api/screenshot', (_req, res) => {
     if (lastScreenshot) {
         res.json({ success: true, screenshot: lastScreenshot });
     } else {
@@ -440,7 +521,7 @@ app.post('/api/key', async (req, res) => {
 });
 
 // Inicializar navegador
-app.post('/api/init', async (req, res) => {
+app.post('/api/init', async (_req, res) => {
     try {
         const result = await initBrowser();
         lastAction = { type: 'init', result: { success: result }, timestamp: Date.now() };
@@ -453,44 +534,81 @@ app.post('/api/init', async (req, res) => {
 /**
  * Iniciar servidor (como main() en Python)
  */
-async function startServer() {
-    try {
-        // Inicializar navegador
+let startPromise = null;
+let stopPromise = null;
+
+async function startServer({ port = PORT, host = '0.0.0.0' } = {}) {
+    if (shuttingDown) throw new Error('Server is shutting down');
+    if (server.listening) return server;
+    if (startPromise) return startPromise;
+    startPromise = (async () => {
         const browserReady = await initBrowser();
-        if (!browserReady) {
-            log.error('No se pudo inicializar el navegador');
-        }
-        
-        // Iniciar servidor HTTP
-        server.listen(PORT, '0.0.0.0', () => {
-            log.info(`🚀 Servidor PyRock ejecutándose en puerto ${PORT}`);
-            log.info(`📱 Interfaz web: http://localhost:${PORT}`);
-            log.info(`🌐 Navegador: ${browserReady ? 'Listo' : 'Error'}`);
+        if (shuttingDown) throw new Error('Server is shutting down');
+        if (!browserReady) log.error('No se pudo inicializar el navegador');
+        await new Promise((resolve, reject) => {
+            const onError = error => { server.off('listening', onListening); reject(error); };
+            const onListening = () => { server.off('error', onError); resolve(); };
+            server.once('error', onError);
+            server.once('listening', onListening);
+            server.listen(port, host);
         });
-        
-    } catch (error) {
-        log.error(`Error iniciando servidor: ${error.message}`);
-        process.exit(1);
-    }
+        log.info(`🚀 Servidor PyRock ejecutándose en puerto ${server.address().port}`);
+        log.info(`📱 Interfaz web: http://localhost:${server.address().port}`);
+        log.info(`🌐 Navegador: ${browserReady ? 'Listo' : 'Error'}`);
+        return server;
+    })();
+    try { return await startPromise; }
+    finally { startPromise = null; }
 }
 
-// Manejo de cierre limpio
+async function stopServer() {
+    if (stopPromise) return stopPromise;
+    shuttingDown = true;
+    stopPromise = (async () => {
+        let shutdownError = null;
+        try { await previewController.close(); }
+        catch (error) { shutdownError = error; }
+        for (const socket of previewWss.clients) {
+            try { socket.close(1001, 'Server shutting down'); } catch {}
+            socket.terminate();
+        }
+        await new Promise(resolve => previewWss.close(() => resolve()));
+        await initQueue;
+        shutdownError ||= shutdownCleanupError;
+        if (browser) {
+            const activeBrowser = browser;
+            browser = null;
+            page = null;
+            try { await activeBrowser.close(); }
+            catch (error) {
+                log.warn('Error cerrando navegador:', error.message);
+                shutdownError ||= error;
+            }
+        }
+        if (server.listening) await new Promise(resolve => server.close(() => resolve()));
+        if (shutdownError) throw shutdownError;
+    })();
+    return stopPromise;
+}
+
 process.on('SIGINT', async () => {
     log.info('Cerrando servidor...');
-    if (browser) {
-        await browser.close();
-    }
+    await stopServer();
     process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
     log.info('Cerrando servidor...');
-    if (browser) {
-        await browser.close();
-    }
+    await stopServer();
     process.exit(0);
 });
 
-// Iniciar aplicación
-log.info('🚀 Iniciando PyRock simplificado...');
-startServer();
+module.exports = { startServer, stopServer, app, server, previewUpgradeAllowed };
+
+if (require.main === module) {
+    log.info('🚀 Iniciando PyRock simplificado...');
+    startServer().catch(error => {
+        log.error(`Error iniciando servidor: ${error.message}`);
+        process.exit(1);
+    });
+}
