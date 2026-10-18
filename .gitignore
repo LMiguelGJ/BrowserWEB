@@ -1,0 +1,4 @@
+# Installed dependencies and local tooling artifacts.
+/node_modules/
+/.pi/verification/
+/.codegraph/
