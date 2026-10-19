@@ -108,12 +108,16 @@ test('shutdown overlapping public HTTP init must close the replacement browser',
     class Browser extends EventEmitter {
         constructor() { super(); this.closeCount = 0; }
         async close() { this.closeCount++; this.emit('disconnected'); }
-        async newPage() {
+        makePage() {
             const browserPage = new EventEmitter();
             for (const method of ['setViewport', 'setUserAgent', 'setExtraHTTPHeaders', 'evaluateOnNewDocument']) {
                 browserPage[method] = async () => {};
             }
             return browserPage;
+        }
+        async newPage() { return this.makePage(); }
+        async createBrowserContext() {
+            return { newPage: async () => this.makePage(), async close() {} };
         }
     }
 
