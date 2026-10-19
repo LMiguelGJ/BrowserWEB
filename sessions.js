@@ -19,6 +19,7 @@ function createSessionManager({ openPage, closeContext, createController, maxSes
         name: section.name,
         url: section.page?.url?.() || section.page?.currentUrl?.() || '',
         previewMode: section.page?.previewMode?.() || null,
+        diagnosis: section.diagnosis || null,
         state: section.state
     });
     const get = id => sessions.get(id) || null;

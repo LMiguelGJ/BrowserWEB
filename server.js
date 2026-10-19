@@ -124,6 +124,8 @@ async function navigateToUrl(url, section, retryCount = 0) {
             settled = diagnosis.readyState === 'complete' && diagnosis.textLength > 0;
         }
         log.info('Estado de la página:', JSON.stringify(diagnosis));
+        // La sección guarda el estado para que el panel pueda refrescarlo solo.
+        section.diagnosis = diagnosis;
         return {
             success: true,
             message: settled ? 'Navegación exitosa' : 'La página todavía no termina de cargar',
