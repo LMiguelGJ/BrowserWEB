@@ -64,9 +64,10 @@ ENV HOME=/home/pyrock
 
 COPY --chown=pyrock:nodejs package.json package-lock.json ./
 # El Chromium de Puppeteer no hace falta (ya es sólo dependencia de desarrollo).
+# npm corre como el usuario pyrock: usa su caché en $HOME. Un --mount=type=cache
+# sobre /home/pyrock/.npm crearía la caché como root y npm fallaría con 243.
 ENV PUPPETEER_SKIP_DOWNLOAD=true
-RUN --mount=type=cache,target=/home/pyrock/.npm \
-    npm ci --omit=dev --silent
+RUN npm ci --omit=dev --no-audit --no-fund
 
 # Descarga del binario de Camoufox en el build (como el usuario de runtime).
 RUN npx camoufox-js fetch
