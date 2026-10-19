@@ -85,37 +85,52 @@
             </div>
         </div>
 
-        <div class="bottom-section">
-            <div class="log-section">
-                <h3>📋 Registro de Actividad</h3>
-                <div class="log-container" id="logContainer">
-                    <div class="log-entry info">Sistema iniciado - vista previa en vivo disponible al conectar</div>
-                </div>
-            </div>
-
-            <div class="script-section">
-                <h3>📜 Control de Scripts</h3>
-                <div class="script-controls">
-                    <div class="script-editor">
-                        <textarea id="scriptEditor" placeholder="Pega aquí tu script o carga desde archivo..."></textarea>
-                    </div>
-                    <div class="script-right-panel">
-                        <div class="script-buttons">
-                            <input type="file" id="scriptFileInput" accept=".txt,.script" style="display: none;">
-                            <button class="btn btn-info" onclick="loadScriptFile()">📁 Cargar Script</button>
-                            <button class="btn btn-success" onclick="executeScript()" id="executeBtn">▶️
-                                Ejecutar</button>
-                            <button class="btn btn-danger" onclick="stopScript()" id="stopBtn" disabled>⏹️
-                                Parar</button>
-                        </div>
-                        <div class="script-status">
-                            <span id="scriptStatus">Estado: Listo</span>
-                            <span id="scriptProgress"></span>
-                        </div>
-                    </div>
-                </div>
-            </div>
+        <div class="side-tabs" role="group" aria-label="Paneles auxiliares">
+            <button type="button" class="side-tab" id="tabLog" onclick="togglePanel('logPanel')"
+                aria-controls="logPanel" aria-expanded="false" aria-label="Registro de actividad"
+                title="Registro de actividad">📋<span class="tab-badge" id="logBadge" hidden></span></button>
+            <button type="button" class="side-tab" id="tabScripts" onclick="togglePanel('scriptPanel')"
+                aria-controls="scriptPanel" aria-expanded="false" aria-label="Control de scripts"
+                title="Control de scripts">📜</button>
         </div>
+
+        <aside class="side-panel" id="logPanel" aria-hidden="true" aria-labelledby="logPanelTitle">
+            <div class="side-panel-header">
+                <h3 id="logPanelTitle">📋 Registro de Actividad</h3>
+                <button type="button" class="side-panel-close" id="logPanelClose" onclick="closePanel()"
+                    aria-label="Cerrar panel" title="Cerrar panel">✕</button>
+            </div>
+            <div class="log-container" id="logContainer">
+                <div class="log-entry info">Sistema iniciado - vista previa en vivo disponible al conectar</div>
+            </div>
+        </aside>
+
+        <aside class="side-panel" id="scriptPanel" aria-hidden="true" aria-labelledby="scriptPanelTitle">
+            <div class="side-panel-header">
+                <h3 id="scriptPanelTitle">📜 Control de Scripts</h3>
+                <button type="button" class="side-panel-close" id="scriptPanelClose" onclick="closePanel()"
+                    aria-label="Cerrar panel" title="Cerrar panel">✕</button>
+            </div>
+            <div class="script-controls">
+                <div class="script-editor">
+                    <textarea id="scriptEditor" placeholder="Pega aquí tu script o carga desde archivo..."></textarea>
+                </div>
+                <div class="script-right-panel">
+                    <div class="script-buttons">
+                        <input type="file" id="scriptFileInput" accept=".txt,.script" style="display: none;">
+                        <button class="btn btn-info" onclick="loadScriptFile()">📁 Cargar Script</button>
+                        <button class="btn btn-success" onclick="executeScript()" id="executeBtn">▶️
+                            Ejecutar</button>
+                        <button class="btn btn-danger" onclick="stopScript()" id="stopBtn" disabled>⏹️
+                            Parar</button>
+                    </div>
+                    <div class="script-status">
+                        <span id="scriptStatus">Estado: Listo</span>
+                        <span id="scriptProgress"></span>
+                    </div>
+                </div>
+            </div>
+        </aside>
     </div>
 
     <!-- Librerías PyRock -->

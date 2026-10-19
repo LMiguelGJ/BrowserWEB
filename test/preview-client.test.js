@@ -148,7 +148,23 @@ function createScriptHarness() {
     let clientOptions;
     function makeElement() {
         const eventListeners = new Map();
+        const classes = new Set();
+        const attributes = new Map();
         return {
+            hidden: false,
+            classList: {
+                add: name => classes.add(name),
+                remove: name => classes.delete(name),
+                contains: name => classes.has(name),
+                toggle(name, force) {
+                    const on = force === undefined ? !classes.has(name) : force;
+                    if (on) classes.add(name); else classes.delete(name);
+                    return on;
+                },
+            },
+            setAttribute(name, value) { attributes.set(name, String(value)); },
+            getAttribute(name) { return attributes.has(name) ? attributes.get(name) : null; },
+            focus() { document.activeElement = this; },
             style: {}, children: [], textContent: '', value: '', naturalWidth: 0, naturalHeight: 0,
             complete: false, rect: { left: 0, top: 0, width: 0, height: 0 }, clientLeft: 0, clientTop: 0,
             getBoundingClientRect() { return this.rect; },
@@ -174,7 +190,15 @@ function createScriptHarness() {
             click() {},
         };
     }
+    const documentListeners = new Map();
     const document = {
+        activeElement: null,
+        addEventListener(type, listener) {
+            documentListeners.set(type, [...(documentListeners.get(type) || []), listener]);
+        },
+        dispatch(type, event = {}) {
+            for (const listener of documentListeners.get(type) || []) listener({ type, ...event });
+        },
         getElementById(id) {
             if (!elements.has(id)) elements.set(id, makeElement());
             return elements.get(id);
@@ -522,4 +546,184 @@ test('arrow pad is laid out as a cross', () => {
     for (const [name, column] of [['left', 1], ['down', 2], ['right', 3]]) {
         assert.match(css, new RegExp(String.raw`\.arrow-${name}\s*\{[^}]*grid-column:\s*${column}[^}]*grid-row:\s*2`));
     }
+});
+
+// ---- Side tabs and slide-over panels ----------------------------------------------------
+
+const indexHtml = fs.readFileSync('public/index.html', 'utf8');
+const stylesCss = fs.readFileSync('public/styles.css', 'utf8');
+const escapeRegExp = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// The opening tag that carries id="<id>", from "<" to the first ">".
+function tagFor(html, id) {
+    const at = html.indexOf(`id="${id}"`);
+    assert.ok(at >= 0, `#${id} exists`);
+    return html.slice(html.lastIndexOf('<', at), html.indexOf('>', at) + 1);
+}
+
+// The declaration block of the rule whose selector is exactly `selector`.
+function ruleBody(css, selector) {
+    const match = new RegExp(String.raw`(?:^|\})\s*${escapeRegExp(selector)}\s*\{([^}]*)\}`).exec(css);
+    assert.ok(match, `CSS rule ${selector} exists`);
+    return match[1];
+}
+
+const PANELS = [
+    { panel: 'logPanel', tab: 'tabLog', close: 'logPanelClose', label: 'Registro de actividad' },
+    { panel: 'scriptPanel', tab: 'tabScripts', close: 'scriptPanelClose', label: 'Control de scripts' },
+];
+
+async function createPanelHarness() {
+    const harness = createScriptHarness();
+    await harness.load();
+    const el = id => harness.context.document.getElementById(id);
+    el('logBadge').hidden = true; // index.html ships the badge hidden
+    return { ...harness, el, document: harness.context.document };
+}
+
+test('the bottom section is replaced by two closed side panels with labelled tabs', () => {
+    assert.doesNotMatch(indexHtml, /bottom-section|class="log-section"|class="script-section"/);
+    for (const { panel, tab, close, label } of PANELS) {
+        const tabTag = tagFor(indexHtml, tab);
+        assert.match(tabTag, /^<button/);
+        for (const fragment of ['type="button"', 'class="side-tab"', 'aria-expanded="false"',
+            `aria-controls="${panel}"`, `aria-label="${label}"`, `title="${label}"`,
+            `onclick="togglePanel('${panel}')"`]) {
+            assert.ok(tabTag.includes(fragment), `${tab} has ${fragment}`);
+        }
+        const panelTag = tagFor(indexHtml, panel);
+        assert.match(panelTag, /^<aside/);
+        assert.ok(panelTag.includes('class="side-panel"') && panelTag.includes('aria-hidden="true"'),
+            `${panel} starts closed`);
+        const closeTag = tagFor(indexHtml, close);
+        for (const fragment of ['type="button"', 'onclick="closePanel()"', 'aria-label="Cerrar panel"']) {
+            assert.ok(closeTag.includes(fragment), `${close} has ${fragment}`);
+        }
+    }
+});
+
+test('the log and script controls live inside their panels and keep their ids', () => {
+    const at = id => indexHtml.indexOf(`id="${id}"`);
+    assert.ok(at('logPanel') < at('logContainer') && at('logContainer') < at('scriptPanel'));
+    for (const id of ['scriptEditor', 'scriptFileInput', 'executeBtn', 'stopBtn', 'scriptStatus', 'scriptProgress']) {
+        assert.ok(at(id) > at('scriptPanel'), `#${id} is inside the script panel`);
+    }
+    assert.match(tagFor(indexHtml, 'stopBtn'), /\bdisabled\b/, 'stop stays disabled until a script runs');
+    const logTab = indexHtml.slice(indexHtml.indexOf('id="tabLog"'), indexHtml.indexOf('</button>', indexHtml.indexOf('id="tabLog"')));
+    assert.ok(logTab.includes('id="logBadge"'), 'the error badge sits on the log tab');
+    assert.match(tagFor(indexHtml, 'logBadge'), /\bhidden\b/);
+});
+
+test('side panel styles: fixed tabs, off-screen closed panel, slide transition, reduced motion', () => {
+    const tabs = ruleBody(stylesCss, '.side-tabs');
+    assert.match(tabs, /position:\s*fixed/);
+    assert.match(tabs, /right:\s*0/);
+    const closed = ruleBody(stylesCss, '.side-panel');
+    assert.match(closed, /position:\s*fixed/);
+    assert.match(closed, /width:\s*min\(/);
+    assert.match(closed, /transform:\s*translateX\(calc\(100%\s*\+\s*64px\)\)/);
+    assert.match(closed, /visibility:\s*hidden/, 'a closed panel is not focusable');
+    assert.match(closed, /transition:[^;]*transform[^;]*visibility/);
+    const open = ruleBody(stylesCss, '.side-panel.open');
+    assert.match(open, /transform:\s*translateX\(0\)/);
+    assert.match(open, /visibility:\s*visible/);
+    for (const rule of [closed, tabs]) assert.ok(Number(/z-index:\s*(\d+)/.exec(rule)?.[1]) > 1000, 'above the click indicator');
+    assert.match(ruleBody(stylesCss, '.tab-badge[hidden]'), /display:\s*none/);
+    assert.match(stylesCss, /@media \(prefers-reduced-motion: reduce\)\s*\{[^@]*\.side-panel[^{]*\{[^}]*transition:\s*none/);
+    assert.doesNotMatch(stylesCss, /bottom-section|\.log-section|\.script-section/);
+});
+
+test('the preview uses the height freed by the bottom section', () => {
+    const body = ruleBody(stylesCss, '.preview-container');
+    assert.match(body, /height:\s*calc\(100vh\s*-\s*\d+px\)/);
+    assert.doesNotMatch(body, /70vh/);
+});
+
+test('a tab opens its panel, exposes the state, moves focus in, and the same tab closes it', async () => {
+    const h = await createPanelHarness();
+    h.context.togglePanel('logPanel');
+    assert.equal(h.el('logPanel').classList.contains('open'), true);
+    assert.equal(h.el('logPanel').getAttribute('aria-hidden'), 'false');
+    assert.equal(h.el('tabLog').getAttribute('aria-expanded'), 'true');
+    assert.equal(h.el('tabLog').classList.contains('active'), true);
+    assert.equal(h.el('scriptPanel').classList.contains('open'), false);
+    assert.equal(h.document.activeElement, h.el('logPanelClose'));
+    h.context.togglePanel('logPanel');
+    assert.equal(h.el('logPanel').classList.contains('open'), false);
+    assert.equal(h.el('logPanel').getAttribute('aria-hidden'), 'true');
+    assert.equal(h.el('tabLog').getAttribute('aria-expanded'), 'false');
+    assert.equal(h.document.activeElement, h.el('tabLog'), 'focus returns to the tab that opened it');
+});
+
+test('only one panel is open at a time', async () => {
+    const h = await createPanelHarness();
+    h.context.togglePanel('logPanel');
+    h.context.togglePanel('scriptPanel');
+    assert.equal(h.el('logPanel').classList.contains('open'), false);
+    assert.equal(h.el('logPanel').getAttribute('aria-hidden'), 'true');
+    assert.equal(h.el('tabLog').getAttribute('aria-expanded'), 'false');
+    assert.equal(h.el('scriptPanel').classList.contains('open'), true);
+    assert.equal(h.el('tabScripts').getAttribute('aria-expanded'), 'true');
+    assert.equal(h.document.activeElement, h.el('scriptPanelClose'));
+});
+
+test('Escape and the close button close the open panel; otherwise they do nothing', async () => {
+    const h = await createPanelHarness();
+    h.document.dispatch('keydown', { key: 'Escape' });
+    assert.equal(h.document.activeElement, null, 'Escape with nothing open leaves focus alone');
+    h.context.closePanel();
+    assert.equal(h.document.activeElement, null, 'close with nothing open is a no-op');
+    h.context.togglePanel('scriptPanel');
+    h.document.dispatch('keydown', { key: 'a' });
+    assert.equal(h.el('scriptPanel').classList.contains('open'), true, 'other keys keep it open');
+    h.document.dispatch('keydown', { key: 'Escape' });
+    assert.equal(h.el('scriptPanel').classList.contains('open'), false);
+    assert.equal(h.document.activeElement, h.el('tabScripts'));
+    h.context.togglePanel('logPanel');
+    h.context.closePanel();
+    assert.equal(h.el('logPanel').classList.contains('open'), false);
+    assert.equal(h.document.activeElement, h.el('tabLog'));
+    h.context.togglePanel('nope');
+    assert.equal(h.el('logPanel').classList.contains('open'), false);
+    assert.equal(h.el('scriptPanel').classList.contains('open'), false);
+});
+
+test('errors logged while the log is closed light the badge; opening the log clears it', async () => {
+    const h = await createPanelHarness();
+    const badge = h.el('logBadge');
+    h.context.addLog('all good', 'info');
+    h.context.addLog('fine', 'success');
+    assert.equal(badge.hidden, true, 'non-errors never light the badge');
+    h.context.addLog('boom', 'error');
+    assert.equal(badge.hidden, false);
+    h.context.togglePanel('scriptPanel');
+    assert.equal(badge.hidden, false, 'the script panel does not clear it');
+    h.context.togglePanel('logPanel');
+    assert.equal(badge.hidden, true);
+    h.context.addLog('boom while watching', 'error');
+    assert.equal(badge.hidden, true, 'no badge while the log is open');
+    h.context.closePanel();
+    h.context.addLog('boom after closing', 'error');
+    assert.equal(badge.hidden, false);
+});
+
+test('opening the log scrolls to the newest entry and closing keeps every entry and the editor text', async () => {
+    const h = await createPanelHarness();
+    h.el('logContainer').scrollHeight = 480;
+    h.el('scriptEditor').value = 'Sleep(100)';
+    const entries = h.el('logContainer').children.length;
+    h.context.togglePanel('logPanel');
+    assert.equal(h.el('logContainer').scrollTop, 480);
+    h.context.togglePanel('scriptPanel');
+    h.context.closePanel();
+    assert.equal(h.el('logContainer').children.length, entries);
+    assert.equal(h.el('scriptEditor').value, 'Sleep(100)');
+});
+
+test('narrow viewports reserve room on the right so the tabs never cover the controls', () => {
+    const block = /@media \(max-width: 1500px\)\s*\{([^@]*?)\n\}/.exec(stylesCss);
+    assert.ok(block, 'a max-width: 1500px media query exists');
+    const padding = /\.container\s*\{[^}]*padding-right:\s*(\d+)px/.exec(block[1]);
+    assert.ok(padding, '.container gets a right padding');
+    assert.ok(Number(padding[1]) >= 68, 'wider than the 48px tabs plus a gap');
 });

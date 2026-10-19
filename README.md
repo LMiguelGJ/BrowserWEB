@@ -104,12 +104,20 @@ PyRock/
 
 3. **Control de Teclado**
    - Escribe texto en el campo correspondiente
-   - Presiona teclas especiales (Enter, Tab, etc.)
+   - Presiona teclas especiales (Enter, Tab, Escape)
+   - Usa la cruz de flechas (↑ ← ↓ →) para mover el cursor o desplazarte
 
 4. **Preview y captura manual**
    - Chrome emite fotogramas JPEG al visor cuando están disponibles; no se garantiza una tasa fija de FPS ni se transmite audio.
    - El visor conserva la imagen anterior al perder la conexión y muestra su estado de reconexión.
    - El botón de captura manual sigue solicitando una imagen nueva por REST.
+
+5. **Registro y scripts (paneles laterales)**
+   - Las pestañas 📋 y 📜 del borde derecho abren, deslizándose, el registro de actividad y el control de scripts.
+   - El panel se superpone: no mueve la vista previa ni los controles, así que los clics siguen mapeados igual.
+   - Se cierra con ✕, con Escape o volviendo a pulsar su pestaña. Abrir una pestaña cierra la otra.
+   - Un script sigue ejecutándose con su panel cerrado.
+   - Si llega un error mientras el registro está cerrado, aparece un punto rojo en 📋 hasta que lo abras.
 
 ### Transporte y límites
 

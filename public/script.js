@@ -6,12 +6,17 @@ let scriptParser = null;
 let isScriptRunning = false;
 let currentScriptExecution = null;
 
+// Side panels (log and scripts): only one is open at a time.
+const PANEL_TABS = { logPanel: 'tabLog', scriptPanel: 'tabScripts' };
+let openPanelId = null;
+
 // Elementos del DOM
 const preview = document.getElementById('preview');
 const loadingText = document.getElementById('loadingText');
 const statusDot = document.getElementById('statusDot');
 const statusText = document.getElementById('statusText');
 const logContainer = document.getElementById('logContainer');
+const logBadge = document.getElementById('logBadge');
 const lastUpdate = document.getElementById('lastUpdate');
 const previewHelp = document.getElementById('previewHelp');
 let currentPreviewStatus = null;
@@ -42,11 +47,55 @@ function addLog(message, type = 'info') {
     logContainer.appendChild(logEntry);
     logContainer.scrollTop = logContainer.scrollHeight;
 
+    // An error logged while the log panel is closed lights the badge on its tab.
+    if (type === 'error' && openPanelId !== 'logPanel') {
+        logBadge.hidden = false;
+    }
+
     // Mantener solo las últimas 50 entradas
     while (logContainer.children.length > 50) {
         logContainer.removeChild(logContainer.firstChild);
     }
 }
+
+function setPanelState(panelId, open) {
+    const panel = document.getElementById(panelId);
+    const tab = document.getElementById(PANEL_TABS[panelId]);
+    panel.classList.toggle('open', open);
+    panel.setAttribute('aria-hidden', String(!open));
+    tab.classList.toggle('active', open);
+    tab.setAttribute('aria-expanded', String(open));
+}
+
+// Closes the open panel and returns focus to the tab that opened it.
+function closePanel() {
+    if (!openPanelId) return;
+    const closing = openPanelId;
+    openPanelId = null;
+    setPanelState(closing, false);
+    document.getElementById(PANEL_TABS[closing]).focus({ preventScroll: true });
+}
+
+// Opens a panel (closing the other one), or closes it when it is already open.
+function togglePanel(panelId) {
+    if (!PANEL_TABS[panelId]) return;
+    if (openPanelId === panelId) {
+        closePanel();
+        return;
+    }
+    if (openPanelId) setPanelState(openPanelId, false);
+    openPanelId = panelId;
+    setPanelState(panelId, true);
+    if (panelId === 'logPanel') {
+        logBadge.hidden = true;
+        logContainer.scrollTop = logContainer.scrollHeight;
+    }
+    document.getElementById(`${panelId}Close`).focus({ preventScroll: true });
+}
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && openPanelId) closePanel();
+});
 
 // Funciones de control usando PyRockHTTP (REST API)
 async function navigate(url = null) {
