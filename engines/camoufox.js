@@ -206,6 +206,11 @@ function createCamoufoxEngine({ loader = () => import('camoufox-js'), launchOpti
             // protection actually scores.
             const proxy = process.env.PYROCK_PROXY?.trim();
             if (proxy) options.proxy = proxy;
+            // With a proxy, the geolocation spoofed in the fingerprint should match
+            // the proxy's IP; camoufox-js warns when it does not.
+            if (process.env.PYROCK_GEOIP === '1' || process.env.PYROCK_GEOIP === 'true') {
+                options.geoip = true;
+            }
             return Camoufox(options);
         },
         async openPage(browser) {

@@ -6,3 +6,6 @@
 # Impeccable decision-page artifacts (tooling cache)
 .impeccable/
 .playwright-cli/
+
+# Local secrets and environment (never committed)
+.env

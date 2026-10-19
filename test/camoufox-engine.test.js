@@ -233,3 +233,22 @@ test('diagnosePage explains a blank preview: a page stuck loading never ran its 
     assert.equal(typeof diagnosis.textLength, 'number');
     assert.equal(diagnosis.spinnerish, 0);
 });
+
+test('the geolocation can be derived from the proxy IP so the fingerprint matches it', async () => {
+    const original = process.env.PYROCK_GEOIP;
+    const originalProxy = process.env.PYROCK_PROXY;
+    process.env.PYROCK_GEOIP = '1';
+    process.env.PYROCK_PROXY = 'socks5://user:pass@gw.example:824';
+    try {
+        let received = null;
+        const engine = createCamoufoxEngine({ loader: async () => ({ Camoufox: async options => { received = options; return { newContext: async () => ({}) }; } }) });
+        await engine.launch();
+        assert.equal(received.proxy, 'socks5://user:pass@gw.example:824');
+        assert.equal(received.geoip, true);
+    } finally {
+        if (original === undefined) delete process.env.PYROCK_GEOIP;
+        else process.env.PYROCK_GEOIP = original;
+        if (originalProxy === undefined) delete process.env.PYROCK_PROXY;
+        else process.env.PYROCK_PROXY = originalProxy;
+    }
+});
