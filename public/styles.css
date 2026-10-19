@@ -403,6 +403,22 @@ body {
     animation: breathe 2.4s ease-in-out infinite;
 }
 
+.preview-hint {
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    z-index: 3;
+    padding: 10px 14px;
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--ink-hi);
+    background: rgba(20, 21, 24, 0.92);
+    border: 1px solid var(--console-line);
+    border-left: 2px solid var(--warn-amber);
+    border-radius: var(--radius-sm);
+}
+
 @keyframes breathe {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.45; }

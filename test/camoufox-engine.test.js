@@ -289,3 +289,26 @@ test('ad and consent networks can be blocked, so a page waiting on one still loa
         else process.env.PYROCK_BLOCK_ADS = original;
     }
 });
+
+test('only a tab of the same site is followed: an ad popup must not take over the preview', async () => {
+    const adopted = [];
+    const pages = [];
+    const context = new (require('node:events').EventEmitter)();
+    context.newPage = async () => { const p = fakePlaywrightPage(); p.url = () => 'https://browser.lol/es/create'; pages.push(p); return p; };
+    context.close = async () => {};
+    const browser = { newContext: async () => context, close: async () => {} };
+    const engine = createCamoufoxEngine({ loader: async () => ({ Camoufox: async () => browser }) });
+    await engine.openPage(await engine.launch(), { onPopup: page => adopted.push(page) });
+
+    const thirdParty = fakePlaywrightPage();
+    thirdParty.url = () => 'https://ads.example/promo';
+    context.emit('page', thirdParty);
+    await new Promise(resolve => setTimeout(resolve, 300));
+    assert.equal(adopted.length, 0, 'a third-party popup is not followed');
+
+    const sameSite = fakePlaywrightPage();
+    sameSite.url = () => 'https://browser.lol/en/s?LINK_ID';
+    context.emit('page', sameSite);
+    await new Promise(resolve => setTimeout(resolve, 300));
+    assert.equal(adopted.length, 1, 'a tab of the same site is followed');
+});

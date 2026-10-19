@@ -107,6 +107,26 @@ document.addEventListener('keydown', (event) => {
 });
 
 // Funciones de control usando PyRockHTTP (REST API)
+// Muestra en el panel por qué una página quedó en blanco: el dato viene del
+// servidor (qué estado tiene el documento y qué petición sigue pendiente).
+function showDiagnosis(diagnosis) {
+    const hint = document.getElementById('previewHint');
+    if (!hint) return;
+    if (!diagnosis || diagnosis.error) { hint.hidden = true; return; }
+    const pending = diagnosis.pending || [];
+    let message = '';
+    if (diagnosis.readyState && diagnosis.readyState !== 'complete') {
+        const host = pending.length ? (() => { try { return new URL(pending[0]).hostname; } catch { return pending[0]; } })() : '';
+        message = `La página sigue cargando (${pending.length} petición${pending.length === 1 ? '' : 'es'} pendiente${pending.length === 1 ? '' : 's'}${host ? `: ${host}` : ''}).`;
+    } else if (diagnosis.textLength === 0) {
+        message = 'La página cargó pero no muestra nada: suele pedir una sesión iniciada o estar bloqueada.';
+    }
+    if (!message) { hint.hidden = true; return; }
+    hint.textContent = message;
+    hint.hidden = false;
+    addLog(message, 'info');
+}
+
 async function navigate(url = null) {
     const targetUrl = url || document.getElementById('urlInput').value.trim();
     if (!targetUrl) {
@@ -116,7 +136,8 @@ async function navigate(url = null) {
 
     if (pyrock && pyrock.isConnected) {
         try {
-            await pyrock.navigate(targetUrl);
+            const result = await pyrock.navigate(targetUrl);
+            showDiagnosis(result && result.diagnosis);
         } catch (error) {
             addLog(`Error navegando: ${error.message}`, 'error');
         }

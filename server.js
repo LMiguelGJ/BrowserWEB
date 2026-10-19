@@ -111,7 +111,7 @@ async function navigateToUrl(url, section, retryCount = 0) {
         // actually did so the cause is in the log, not in a guess.
         const diagnosis = await diagnosePage(section.page);
         log.info('Estado de la página:', JSON.stringify(diagnosis));
-        return { success: true, message: 'Navegación exitosa', status: response?.status() };
+        return { success: true, message: 'Navegación exitosa', status: response?.status(), diagnosis };
     } catch (error) {
         const message = error.message;
         const retryable = ['Navigation timeout','net::ERR_CONNECTION_REFUSED','net::ERR_CONNECTION_RESET','net::ERR_NETWORK_CHANGED','Target closed'].some(item => message.includes(item));

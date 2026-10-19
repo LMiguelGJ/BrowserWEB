@@ -267,9 +267,31 @@ function createCamoufoxEngine({ loader = () => import('camoufox-js'), launchOpti
                 // is reported so the section can follow it: otherwise the preview
                 // would keep showing the page that opened the tab.
                 if (typeof onPopup === 'function' && typeof context.on === 'function') {
+                    const originOf = url => { try { return new URL(url).origin; } catch { return null; } };
+                    const waitForRealUrl = async target => {
+                        for (let attempt = 0; attempt < 30; attempt++) {
+                            const current = target.url();
+                            if (current && current !== 'about:blank') return current;
+                            await new Promise(resolve => setTimeout(resolve, 100));
+                        }
+                        return null;
+                    };
                     context.on('page', popup => {
                         if (popup === raw) return;
-                        Promise.resolve(onPopup(wrapPage(popup))).catch(() => {});
+                        (async () => {
+                            const url = await waitForRealUrl(popup);
+                            if (!url) return; // stayed blank: nothing to follow
+                            const popupOrigin = originOf(url);
+                            const mainOrigin = originOf(raw.url());
+                            // Only the same site is followed: an advertisement or
+                            // a third-party popup would take the preview away
+                            // from the page the user is working on.
+                            if (popupOrigin && mainOrigin && popupOrigin !== mainOrigin) {
+                                logger?.warn(`pestaña nueva ignorada (sitio distinto): ${url.slice(0, 120)}`);
+                                return;
+                            }
+                            await onPopup(wrapPage(popup));
+                        })().catch(() => {});
                     });
                 }
                 // Ad and consent networks can hold a page in its loader; blocking

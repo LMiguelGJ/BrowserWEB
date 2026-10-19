@@ -34,12 +34,13 @@ function reset() {
     return globalThis.__pyrockCamoufoxState;
 }
 
-function makePage(context, label = 'shot') {
+function makePage(context, label = 'shot', url = 'https://example.test/') {
     const page = new EventEmitter();
     page.calls = [];
     page.closed = false;
     page.label = label;
-    page.url = () => 'about:blank';
+    page.url = () => url;
+    page.url = () => url;
     page.isClosed = () => page.closed;
     page.goto = async (url) => {
         page.calls.push(['navigate', url]);
@@ -84,8 +85,8 @@ function makeBrowser() {
         };
         // A site that opens a link in a new tab (a session link, a popup) is
         // reported to the engine, which hands it to the section.
-        context.openPopup = async (label = 'popup') => {
-            const page = makePage(context, label);
+        context.openPopup = async (label = 'popup', url = 'https://example.test/session') => {
+            const page = makePage(context, label, url);
             context.pages.push(page);
             state.pages.push(page);
             context.emit('page', page);
