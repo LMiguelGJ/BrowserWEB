@@ -60,7 +60,7 @@ test('selecting section switches client and updates aria-current; malicious name
   const li=h.elements.get('sessionList').children[1],button=li.children[0];button.dispatch('click');await new Promise(r=>setImmediate(r));
   assert.ok(h.operations.some(x=>x[0]==='switch'&&x[1]==='s2'));
   const selected=h.elements.get('sessionList').children[1].children[0];assert.equal(selected.getAttribute('aria-current'),'true');
-  assert.equal(selected.children[1].textContent,'<b>e');assert.equal(selected.children[1].innerHTML,undefined);assert.equal(selected.title,'<b>evil</b>');
+  assert.equal(selected.children[1].textContent,'<b>evil</b>');assert.equal(selected.children[1].innerHTML,undefined);assert.equal(selected.title,'<b>evil</b>');
 });
 test('closing active section selects its adjacent neighbor; final close disabled; max disables add', async () => {
   const h=createScriptHarness({sessions:[{id:'s1',name:'one'},{id:'s2',name:'two'},{id:'s3',name:'three'}],max:3});await h.load();
@@ -111,7 +111,8 @@ test('restart button handler restarts only active section', async () => {
   const h=createScriptHarness({sessions:[{id:'s1',name:'one'},{id:'s2',name:'two'}]});await h.load();
   h.elements.get('sessionList').children[1].children[0].dispatch('click');await h.api().initBrowser();assert.ok(h.operations.some(x=>x[0]==='restart'&&x[1]==='s2'));
 });
-test('CSS reserves sidebar space and markup exposes accessible sidebar', () => {
+test('CSS reserves rail space and markup exposes accessible sidebar', () => {
   const html=fs.readFileSync('public/index.html','utf8'),css=fs.readFileSync('public/styles.css','utf8');
-  assert.match(html,/<nav class="session-bar" aria-label="Secciones">/);assert.match(css,/padding-left:\s*92px/);
+  assert.match(html,/<nav class="session-rail" aria-label="Secciones">/);
+  assert.match(css,/--rail-width:\s*280px/);assert.match(css,/grid-template-columns:\s*var\(--rail-width\)\s+1fr\s+var\(--rack-width\)/);
 });

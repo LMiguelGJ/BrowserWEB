@@ -2,3 +2,7 @@
 /node_modules/
 /.pi/verification/
 /.codegraph/
+
+# Impeccable decision-page artifacts (tooling cache)
+.impeccable/
+.playwright-cli/

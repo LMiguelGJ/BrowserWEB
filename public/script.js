@@ -40,6 +40,10 @@ const scriptProgress = document.getElementById('scriptProgress');
 function updateStatus(text, connected) {
     statusText.textContent = text;
     statusDot.className = `status-dot ${connected ? 'connected' : ''}`;
+    // Monitor de programa: sin señal cuando la consola pierde la conexión y no hay imagen.
+    if (!connected && loadingText.style.display !== 'none') {
+        loadingText.textContent = 'SIN SEÑAL — reconectando…';
+    }
 }
 
 // Agregar entrada al log
@@ -115,18 +119,6 @@ async function navigate(url = null) {
             await pyrock.navigate(targetUrl);
         } catch (error) {
             addLog(`Error navegando: ${error.message}`, 'error');
-        }
-    } else {
-        addLog('No hay conexión con el servidor PyRock', 'error');
-    }
-}
-
-async function takeScreenshot() {
-    if (pyrock && pyrock.isConnected) {
-        try {
-            await pyrock.takeScreenshot();
-        } catch (error) {
-            addLog(`Error tomando screenshot: ${error.message}`, 'error');
         }
     } else {
         addLog('No hay conexión con el servidor PyRock', 'error');
@@ -210,6 +202,28 @@ document.getElementById('urlInput').addEventListener('keypress', (e) => {
     }
 });
 
+// Conexión de controles: los handlers se registran aquí en lugar de atributos
+// onclick inline, de modo que el uso es visible para el análisis estático y
+// compatible con una Content-Security-Policy sin 'unsafe-inline'.
+document.getElementById('navigateBtn').addEventListener('click', () => navigate());
+document.getElementById('clickBtn').addEventListener('click', sendClick);
+document.getElementById('typeBtn').addEventListener('click', sendType);
+document.getElementById('restartBtn').addEventListener('click', initBrowser);
+document.getElementById('arrowUp').addEventListener('click', () => sendKey('ArrowUp'));
+document.getElementById('arrowLeft').addEventListener('click', () => sendKey('ArrowLeft'));
+document.getElementById('arrowDown').addEventListener('click', () => sendKey('ArrowDown'));
+document.getElementById('arrowRight').addEventListener('click', () => sendKey('ArrowRight'));
+document.getElementById('keyEnter').addEventListener('click', () => sendKey('Enter'));
+document.getElementById('keyTab').addEventListener('click', () => sendKey('Tab'));
+document.getElementById('keyEscape').addEventListener('click', () => sendKey('Escape'));
+document.getElementById('tabLog').addEventListener('click', () => togglePanel('logPanel'));
+document.getElementById('tabScripts').addEventListener('click', () => togglePanel('scriptPanel'));
+document.getElementById('logPanelClose').addEventListener('click', closePanel);
+document.getElementById('scriptPanelClose').addEventListener('click', closePanel);
+document.getElementById('loadScriptBtn').addEventListener('click', loadScriptFile);
+document.getElementById('executeBtn').addEventListener('click', executeScript);
+document.getElementById('stopBtn').addEventListener('click', stopScript);
+
 // Where the object-fit: contain image is actually drawn, in viewport coordinates.
 // It reads the current rendered rectangle on every call, so resizes, scrolling and the
 // hover zoom are always reflected. Returns null while the geometry is unusable.
@@ -289,6 +303,8 @@ async function refreshSessions() {
     if (!pyrock || !pyrock.isConnected || typeof pyrock.listSessions !== 'function') return;
     const result = await pyrock.listSessions();
     sessionRecords = result.sessions || []; sessionMaximum = result.max || 5;
+    const deckBus = document.getElementById('deckBus');
+    if (deckBus) deckBus.textContent = `PVW → PGM · ${sessionRecords.find(s => s.id === activeSessionId)?.name || '—'}`;
     const list = document.getElementById('sessionList'); list.replaceChildren();
     const add = document.getElementById('sessionAdd');
     add.disabled = sessionRecords.length >= sessionMaximum; add.title = add.disabled ? 'Límite de secciones alcanzado' : 'Agregar sección';
@@ -297,7 +313,7 @@ async function refreshSessions() {
         const button = document.createElement('button'); button.type = 'button'; button.title = section.name; button.setAttribute('aria-label', section.name);
         button.setAttribute('aria-current', section.id === activeSessionId ? 'true' : 'false');
         const number = document.createElement('span'); number.textContent = String(index + 1);
-        const name = document.createElement('span'); name.className = 'session-name'; name.textContent = section.name.slice(0, 4);
+        const name = document.createElement('span'); name.className = 'session-name'; name.textContent = section.name;
         button.append(number, name); button.addEventListener('click', () => activateSession(section)); li.append(button);
         const close = document.createElement('button'); close.type = 'button'; close.className = 'session-close'; close.textContent = '✕'; close.disabled = sessionRecords.length <= 1; close.setAttribute('aria-label', `Cerrar ${section.name}`);
         close.addEventListener('click', async () => {
@@ -340,7 +356,7 @@ function activateSession(section) {
     if (!section) return;
     activeSessionId = section.id; localStorage.setItem('pyrock.activeSession', section.id);
     pyrock.switchSession(section.id); pendingFrameRender = false; queuedManualScreenshot = null;
-    preview.style.display = 'none'; loadingText.style.display = 'block'; loadingText.textContent = '⏳ Cargando sección…';
+    preview.style.display = 'none'; loadingText.style.display = 'block'; loadingText.textContent = 'Cargando sección…';
     document.getElementById('urlInput').value = section.url || ''; refreshSessions();
 }
 async function addSessionInline() {
@@ -402,7 +418,7 @@ window.addEventListener('load', async () => {
                 }
                 if (!screenshot || !preview) {
                     loadingText.style.display = 'block';
-                    loadingText.textContent = '⏳ Esperando fotograma de vista previa…';
+                    loadingText.textContent = 'Esperando fotograma de vista previa…';
                     if (onRenderComplete) onRenderComplete(new Error('No preview image element'));
                     return;
                 }
@@ -437,7 +453,7 @@ window.addEventListener('load', async () => {
                     cleanupListeners();
                     preview.style.display = 'block';
                     loadingText.style.display = 'block';
-                    loadingText.textContent = '❌ Error cargando imagen; se conserva la vista previa anterior si está disponible';
+                    loadingText.textContent = 'Error cargando imagen; se conserva la vista previa anterior si está disponible';
                     addLog('Error al mostrar imagen de preview', 'error');
                     finish(new Error('Error rendering preview image'));
                 };

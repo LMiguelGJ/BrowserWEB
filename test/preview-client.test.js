@@ -354,22 +354,35 @@ const ARROWS = [
 
 test('keyboard group offers four labelled arrow buttons that send the matching key', () => {
     const html = fs.readFileSync('public/index.html', 'utf8');
+    const script = fs.readFileSync('public/script.js', 'utf8');
     const group = html.slice(html.indexOf('Control de Teclado'), html.indexOf('Sistema</h3>'));
-    for (const { key, label, glyph } of ARROWS) {
-        const button = new RegExp(String.raw`<button[^>]*onclick="sendKey\('${key}'\)"[^>]*>\s*${glyph}\s*</button>`).exec(group);
+    for (const { key, label, glyph, id } of [
+        { key: 'ArrowUp', label: 'Flecha arriba', glyph: '↑', id: 'arrowUp' },
+        { key: 'ArrowLeft', label: 'Flecha izquierda', glyph: '←', id: 'arrowLeft' },
+        { key: 'ArrowDown', label: 'Flecha abajo', glyph: '↓', id: 'arrowDown' },
+        { key: 'ArrowRight', label: 'Flecha derecha', glyph: '→', id: 'arrowRight' },
+    ]) {
+        const button = new RegExp(String.raw`<button[^>]*id="${id}"[^>]*>\s*${glyph}\s*</button>`).exec(group);
         assert.ok(button, `${key} button exists in the keyboard group`);
         assert.match(button[0], new RegExp(`aria-label="${label}"`), `${key} has an accessible name`);
         assert.match(button[0], new RegExp(`title="${label}"`), `${key} has a tooltip`);
+        assert.match(script, new RegExp(String.raw`getElementById\('${id}'\)\.addEventListener\('click',\s*\(\)\s*=>\s*sendKey\('${key}'\)\)`), `${key} is wired to sendKey`);
     }
     assert.equal((group.match(/class="[^"]*arrow-/g) || []).length >= 4, true, 'arrow buttons are positioned by dedicated classes');
-    for (const key of ['Enter', 'Tab', 'Escape']) assert.ok(group.includes(`sendKey('${key}')`), `${key} is kept`);
+    for (const [key, id] of [['Enter', 'keyEnter'], ['Tab', 'keyTab'], ['Escape', 'keyEscape']]) {
+        assert.ok(group.includes(`id="${id}"`), `${key} button is kept`);
+        assert.match(script, new RegExp(String.raw`getElementById\('${id}'\)\.addEventListener\('click',\s*\(\)\s*=>\s*sendKey\('${key}'\)\)`), `${key} is wired to sendKey`);
+    }
+    assert.doesNotMatch(group, /onclick=/, 'no inline handlers in the keyboard group');
 });
 
 test('removed controls are gone from the interface', () => {
     const html = fs.readFileSync('public/index.html', 'utf8');
+    const script = fs.readFileSync('public/script.js', 'utf8');
     assert.doesNotMatch(html, /apponfly/i);
     assert.doesNotMatch(html, /getStatus\(\)|Estado del Sistema/);
-    assert.match(html, /initBrowser\(\)/, 'restart button is kept');
+    assert.match(html, /id="restartBtn"/, 'restart button is kept');
+    assert.match(script, /getElementById\('restartBtn'\)\.addEventListener\('click', initBrowser\)/, 'restart is wired');
 });
 
 test('each arrow sends exactly its key through REST and needs a connection', async () => {
@@ -407,8 +420,10 @@ function tagFor(html, id) {
 }
 
 // The declaration block of the rule whose selector is exactly `selector`.
+// CSS comments are stripped first so a rule after a comment header still matches.
 function ruleBody(css, selector) {
-    const match = new RegExp(String.raw`(?:^|\})\s*${escapeRegExp(selector)}\s*\{([^}]*)\}`).exec(css);
+    const clean = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    const match = new RegExp(String.raw`(?:^|\})\s*${escapeRegExp(selector)}\s*\{([^}]*)\}`).exec(clean);
     assert.ok(match, `CSS rule ${selector} exists`);
     return match[1];
 }
@@ -427,23 +442,26 @@ async function createPanelHarness() {
 }
 
 test('the bottom section is replaced by two closed side panels with labelled tabs', () => {
+    const script = fs.readFileSync('public/script.js', 'utf8');
     assert.doesNotMatch(indexHtml, /bottom-section|class="log-section"|class="script-section"/);
+    assert.doesNotMatch(indexHtml, /onclick=/, 'no inline handlers: everything is wired in script.js');
     for (const { panel, tab, close, label } of PANELS) {
         const tabTag = tagFor(indexHtml, tab);
         assert.match(tabTag, /^<button/);
         for (const fragment of ['type="button"', 'class="side-tab"', 'aria-expanded="false"',
-            `aria-controls="${panel}"`, `aria-label="${label}"`, `title="${label}"`,
-            `onclick="togglePanel('${panel}')"`]) {
+            `aria-controls="${panel}"`, `aria-label="${label}"`, `title="${label}"`]) {
             assert.ok(tabTag.includes(fragment), `${tab} has ${fragment}`);
         }
+        assert.match(script, new RegExp(`getElementById\\('${tab}'\\)\\.addEventListener\\('click',\\s*\\(\\)\\s*=>\\s*togglePanel\\('${panel}'\\)\\)`), `${tab} is wired to togglePanel`);
         const panelTag = tagFor(indexHtml, panel);
         assert.match(panelTag, /^<aside/);
         assert.ok(panelTag.includes('class="side-panel"') && panelTag.includes('aria-hidden="true"'),
             `${panel} starts closed`);
         const closeTag = tagFor(indexHtml, close);
-        for (const fragment of ['type="button"', 'onclick="closePanel()"', 'aria-label="Cerrar panel"']) {
+        for (const fragment of ['type="button"', 'aria-label="Cerrar panel"']) {
             assert.ok(closeTag.includes(fragment), `${close} has ${fragment}`);
         }
+        assert.match(script, new RegExp(`getElementById\\('${close}'\\)\\.addEventListener\\('click',\\s*closePanel\\)`), `${close} is wired to closePanel`);
     }
 });
 
@@ -459,29 +477,31 @@ test('the log and script controls live inside their panels and keep their ids', 
     assert.match(tagFor(indexHtml, 'logBadge'), /\bhidden\b/);
 });
 
-test('side panel styles: fixed tabs, off-screen closed panel, slide transition, reduced motion', () => {
-    const tabs = ruleBody(stylesCss, '.side-tabs');
-    assert.match(tabs, /position:\s*fixed/);
-    assert.match(tabs, /right:\s*0/);
+test('side panel styles: deck tabs, off-screen closed panel, slide transition, reduced motion', () => {
     const closed = ruleBody(stylesCss, '.side-panel');
     assert.match(closed, /position:\s*fixed/);
-    assert.match(closed, /width:\s*min\(/);
-    assert.match(closed, /transform:\s*translateX\(calc\(100%\s*\+\s*64px\)\)/);
+    assert.match(closed, /width:\s*\d+px/);
+    assert.match(closed, /max-width:\s*calc\(100vw/);
+    assert.match(closed, /transform:\s*translateX\(105%\)/);
     assert.match(closed, /visibility:\s*hidden/, 'a closed panel is not focusable');
     assert.match(closed, /transition:[^;]*transform[^;]*visibility/);
     const open = ruleBody(stylesCss, '.side-panel.open');
     assert.match(open, /transform:\s*translateX\(0\)/);
     assert.match(open, /visibility:\s*visible/);
-    for (const rule of [closed, tabs]) assert.ok(Number(/z-index:\s*(\d+)/.exec(rule)?.[1]) > 1000, 'above the click indicator');
+    assert.ok(Number(/z-index:\s*(\d+)/.exec(closed)?.[1]) > 1000, 'above the click indicator');
     assert.match(ruleBody(stylesCss, '.tab-badge[hidden]'), /display:\s*none/);
     assert.match(stylesCss, /@media \(prefers-reduced-motion: reduce\)\s*\{[^@]*\.side-panel[^{]*\{[^}]*transition:\s*none/);
     assert.doesNotMatch(stylesCss, /bottom-section|\.log-section|\.script-section/);
 });
 
-test('the preview uses the height freed by the bottom section', () => {
-    const body = ruleBody(stylesCss, '.preview-container');
-    assert.match(body, /height:\s*calc\(100vh\s*-\s*\d+px\)/);
-    assert.doesNotMatch(body, /70vh/);
+test('the preview owns the console height freed by the fixed chrome', () => {
+    const consoleRule = ruleBody(stylesCss, '.console');
+    assert.match(consoleRule, /height:\s*calc\(100vh\s*-\s*var\(--top-height\)\)/);
+    const program = ruleBody(stylesCss, '.program');
+    assert.match(program, /flex-direction:\s*column/);
+    const container = ruleBody(stylesCss, '.preview-container');
+    assert.match(container, /flex:\s*1/);
+    assert.doesNotMatch(container, /70vh/);
 });
 
 test('a tab opens its panel, exposes the state, moves focus in, and the same tab closes it', async () => {
@@ -565,10 +585,12 @@ test('opening the log scrolls to the newest entry and closing keeps every entry 
     assert.equal(h.el('scriptEditor').value, 'Sleep(100)');
 });
 
-test('narrow viewports reserve room on the right so the tabs never cover the controls', () => {
-    const block = /@media \(max-width: 1500px\)\s*\{([^@]*?)\n\}/.exec(stylesCss);
-    assert.ok(block, 'a max-width: 1500px media query exists');
-    const padding = /\.container\s*\{[^}]*padding-right:\s*(\d+)px/.exec(block[1]);
-    assert.ok(padding, '.container gets a right padding');
-    assert.ok(Number(padding[1]) >= 68, 'wider than the 48px tabs plus a gap');
+test('responsive breakpoints: rack reflows under 1100px and the rail collapses under 760px', () => {
+    const rackBlock = /@media \(max-width: 1100px\)\s*\{([^@]*?)\n\}/.exec(stylesCss);
+    assert.ok(rackBlock, 'a max-width: 1100px media query exists');
+    assert.match(rackBlock[1], /grid-template-areas:[\s\S]*"rack\s*rack"/);
+    const narrowBlock = /@media \(max-width: 760px\)\s*\{([^@]*?)\n\}/.exec(stylesCss);
+    assert.ok(narrowBlock, 'a max-width: 760px media query exists');
+    assert.match(narrowBlock[1], /grid-template-columns:\s*1fr/);
+    assert.match(narrowBlock[1], /#sessionList\s*\{[\s\S]*?flex-direction:\s*row/);
 });

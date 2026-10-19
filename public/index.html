@@ -4,105 +4,140 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PyRock - Control Remoto de Navegador</title>
+    <title>PyRock — Master Control de Secciones</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 
 <body>
-    <nav class="session-bar" aria-label="Secciones">
-        <button id="sessionAdd" type="button" aria-label="Agregar sección" title="Agregar sección">＋</button>
-        <ul id="sessionList"></ul>
-    </nav>
-    <div class="container">
-        <div class="main-content">
-            <div class="preview-section">
-                <div class="status-bar">
-                    <div class="status-indicator">
-                        <div class="status-dot connected" id="statusDot"></div>
-                        <span id="statusText">Conectado</span>
-                    </div>
-                    <div>
-                        <span id="lastUpdate">Última actualización: --:--:--</span>
-                    </div>
-                </div>
+    <!--
+      DIRECTION CONTRACT — master control de broadcast (seed 7d0575702b61cd919f4b1dc794ff1d48)
+      THESIS: el panel es una sala de master control de broadcast; cada sección es una fuente con tally y la
+        preview es el monitor de programa. Se rechaza el default de la categoría: dashboard de cards blancas
+        flotantes sobre gradiente violeta.
+      OWN-WORLD: consola oscura en tres planos (#0e0f11/#141518/#1e2024) con hairlines #2a2d33; cromía solo
+        funcional — tally rojo (al aire), azul (acción), ámbar (teclas que actúan), verde (OK). Barlow para UI,
+        JetBrains Mono para todo dato medido. Íconos SVG de trazo uniforme; jamás emoji.
+      STORY: el operador ve de un vistazo qué fuente está al aire, la opera desde el rack y conmuta por el deck;
+        nada se adivina.
+      FIRST VIEWPORT: barra superior (marca, estado, reloj); riel de fuentes con tally a la izquierda (280px);
+        monitor de programa al centro con esquinas de safe-area; rack de controles a la derecha (340px); deck
+        PVW→PGM abajo.
+      FORM: consola master-control, staging del sketch elegido por el usuario (model-pick.html); seed key
+        7d0575702b61cd919f4b1dc794ff1d48.
+    -->
+    <header class="top-bar">
+        <div class="brand">PyRock<span class="brand-sub">Master Control</span></div>
+        <div class="top-status">
+            <div class="status-indicator">
+                <div class="status-dot connected" id="statusDot"></div>
+                <span id="statusText">Conectado</span>
+            </div>
+            <span class="top-clock" id="lastUpdate">Última actualización: --:--:--</span>
+        </div>
+    </header>
 
-                <div class="auto-refresh-info" id="previewHelp">
-                    🔄 <strong>Vista previa en vivo</strong> - Actualización por eventos; no se garantiza una frecuencia fija
-                </div>
+    <div class="console">
+        <nav class="session-rail" aria-label="Secciones">
+            <div class="rail-head">Fuentes</div>
+            <ul id="sessionList"></ul>
+            <button id="sessionAdd" type="button" aria-label="Agregar sección" title="Agregar sección">＋ Nueva sección</button>
+        </nav>
 
-                <div class="preview-container">
-                    <img id="preview" alt="Preview del navegador" title="Haz clic sobre la imagen para enviar el clic y actualizar X/Y." style="display: none;">
-                    <div class="loading" id="loadingText">
-                        🔄 Cargando preview del navegador...
-                    </div>
+        <main class="program">
+            <div class="program-head">
+                <span class="program-label">Programa</span>
+                <span class="program-meta" id="previewHelp" title="Actualización por eventos; no se garantiza una frecuencia fija">
+                    Vista previa en vivo — actualización por eventos
+                </span>
+            </div>
+            <div class="preview-container">
+                <i class="corner c1" aria-hidden="true"></i><i class="corner c2" aria-hidden="true"></i>
+                <i class="corner c3" aria-hidden="true"></i><i class="corner c4" aria-hidden="true"></i>
+                <img id="preview" alt="Preview del navegador" title="Haz clic sobre la imagen para enviar el clic y actualizar X/Y."
+                    src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAEALAAAAAABAAEAAAICTAEAOw==" style="display: none;">
+                <div class="loading" id="loadingText">
+                    Cargando preview del navegador...
+                </div>
+            </div>
+        </main>
+
+        <aside class="control-rack">
+            <div class="control-group">
+                <h3><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M1.8 8h12.4M8 1.8c2.5 2.3 2.5 10.1 0 12.4M8 1.8c-2.5 2.3-2.5 10.1 0 12.4"/></svg>Navegación</h3>
+                <div class="input-group">
+                    <input type="text" id="urlInput" placeholder="Ingresa URL (ej: https://example.com/)"
+                        value="https://example.com/">
+                    <button id="navigateBtn" class="btn btn-primary">Ir</button>
                 </div>
             </div>
 
-            <div class="controls-section">
-                <div class="control-group">
-                    <h3>🌐 Navegación</h3>
-                    <div class="input-group">
-                        <input type="text" id="urlInput" placeholder="Ingresa URL (ej: https://example.com/)"
-                            value="https://example.com/">
-                        <button onclick="navigate()" class="btn btn-primary">Ir</button>
-                    </div>
+            <div class="control-group">
+                <h3><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 2.5v6l-2.2-1.6a1.2 1.2 0 0 0-1.7 1.6l3.2 4.9c.4.7 1.2 1.1 2 1.1h3.1a2.4 2.4 0 0 0 2.4-2.2l.4-3.6a1.6 1.6 0 0 0-1.6-1.7H8.6l.7-3.1a1.4 1.4 0 0 0-2.7-.7z"/></svg>Control de Mouse</h3>
+                <div class="coordinates">
+                    <label for="clickX">X:</label>
+                    <input type="number" id="clickX" placeholder="X" value="600">
+                    <label for="clickY">Y:</label>
+                    <input type="number" id="clickY" placeholder="Y" value="620">
                 </div>
+                <button id="clickBtn" class="btn btn-primary">Click en Coordenadas</button>
+            </div>
 
-                <div class="control-group">
-                    <h3>🖱️ Control de Mouse</h3>
-                    <div class="coordinates">
-                        <label for="clickX">X:</label>
-                        <input type="number" id="clickX" placeholder="X" value="600">
-                        <label for="clickY">Y:</label>
-                        <input type="number" id="clickY" placeholder="Y" value="620">
-                    </div>
-                    <button class="btn btn-primary" onclick="sendClick()">Click en Coordenadas</button>
+            <div class="control-group">
+                <h3><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3" width="13" height="10" rx="1.5"/><path d="M4 6h1.5M6.5 6H8M9.5 6H11M4 8.2h1.5M6.5 8.2H8M9.5 8.2H11M4.6 10.5h6.8"/></svg>Control de Teclado</h3>
+                <div class="text-input-container">
+                    <input type="text" class="text-input" id="typeText" placeholder="Texto a escribir" value="hola">
                 </div>
-
-                <div class="control-group">
-                    <h3>⌨️ Control de Teclado</h3>
-                    <div class="text-input-container">
-                        <input type="text" class="text-input" id="typeText" placeholder="Texto a escribir" value="hola">
-                    </div>
-                    <div class="arrow-pad" role="group" aria-label="Teclas de flecha">
-                        <button class="btn btn-info arrow-up" onclick="sendKey('ArrowUp')" aria-label="Flecha arriba"
-                            title="Flecha arriba">↑</button>
-                        <button class="btn btn-info arrow-left" onclick="sendKey('ArrowLeft')" aria-label="Flecha izquierda"
-                            title="Flecha izquierda">←</button>
-                        <button class="btn btn-info arrow-down" onclick="sendKey('ArrowDown')" aria-label="Flecha abajo"
-                            title="Flecha abajo">↓</button>
-                        <button class="btn btn-info arrow-right" onclick="sendKey('ArrowRight')" aria-label="Flecha derecha"
-                            title="Flecha derecha">→</button>
-                    </div>
-                    <div class="keyboard-buttons">
-                        <button class="btn btn-primary" onclick="sendType()">Escribir</button>
-                        <button class="btn btn-warning" onclick="sendKey('Enter')">Enter</button>
-                        <button class="btn btn-warning" onclick="sendKey('Tab')">Tab</button>
-                        <button class="btn btn-warning" onclick="sendKey('Escape')">Escape</button>
-                    </div>
+                <div class="arrow-pad" role="group" aria-label="Teclas de flecha">
+                    <button class="btn btn-info arrow-up" id="arrowUp" aria-label="Flecha arriba"
+                        title="Flecha arriba">↑</button>
+                    <button class="btn btn-info arrow-left" id="arrowLeft" aria-label="Flecha izquierda"
+                        title="Flecha izquierda">←</button>
+                    <button class="btn btn-info arrow-down" id="arrowDown" aria-label="Flecha abajo"
+                        title="Flecha abajo">↓</button>
+                    <button class="btn btn-info arrow-right" id="arrowRight" aria-label="Flecha derecha"
+                        title="Flecha derecha">→</button>
                 </div>
-
-                <div class="control-group">
-                    <h3>🔧 Sistema</h3>
-                    <button onclick="initBrowser()" class="btn btn-danger">🔄 Reiniciar sección</button>
+                <div class="keyboard-buttons">
+                    <button class="btn btn-primary" id="typeBtn">Escribir</button>
+                    <button class="btn btn-warning" id="keyEnter">Enter</button>
+                    <button class="btn btn-warning" id="keyTab">Tab</button>
+                    <button class="btn btn-warning" id="keyEscape">Escape</button>
                 </div>
             </div>
-        </div>
 
-        <div class="side-tabs" role="group" aria-label="Paneles auxiliares">
-            <button type="button" class="side-tab" id="tabLog" onclick="togglePanel('logPanel')"
-                aria-controls="logPanel" aria-expanded="false" aria-label="Registro de actividad"
-                title="Registro de actividad">📋<span class="tab-badge" id="logBadge" hidden></span></button>
-            <button type="button" class="side-tab" id="tabScripts" onclick="togglePanel('scriptPanel')"
-                aria-controls="scriptPanel" aria-expanded="false" aria-label="Control de scripts"
-                title="Control de scripts">📜</button>
-        </div>
+            <div class="control-group">
+                <h3><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 1.5 3.8 9h3.4l-.7 5.5L12.2 7H8.8z"/></svg>Sistema</h3>
+                <button id="restartBtn" class="btn btn-danger">
+                    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 1.5v3h-3"/></svg>Reiniciar sección
+                </button>
+            </div>
+        </aside>
+
+        <footer class="router-deck" role="group" aria-label="Panel de conmutación">
+            <div class="deck-bus" id="deckBus">PVW → PGM</div>
+            <div class="side-tabs">
+                <button type="button" class="side-tab" id="tabLog"
+                    aria-controls="logPanel" aria-expanded="false" aria-label="Registro de actividad"
+                    title="Registro de actividad">
+                    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 2.5h9v11h-9z"/><path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3"/></svg>
+                    <span class="tab-text">Registro</span><span class="tab-badge" id="logBadge" hidden></span>
+                </button>
+                <button type="button" class="side-tab" id="tabScripts"
+                    aria-controls="scriptPanel" aria-expanded="false" aria-label="Control de scripts"
+                    title="Control de scripts">
+                    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="m5 4.5-3 3.5 3 3.5M11 4.5l3 3.5-3 3.5"/></svg>
+                    <span class="tab-text">Scripts</span>
+                </button>
+            </div>
+        </footer>
 
         <aside class="side-panel" id="logPanel" aria-hidden="true" aria-labelledby="logPanelTitle">
             <div class="side-panel-header">
-                <h3 id="logPanelTitle">📋 Registro de Actividad</h3>
-                <button type="button" class="side-panel-close" id="logPanelClose" onclick="closePanel()"
-                    aria-label="Cerrar panel" title="Cerrar panel">✕</button>
+                <h3 id="logPanelTitle"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 2.5h9v11h-9z"/><path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3"/></svg>Registro de Actividad</h3>
+                <button type="button" class="side-panel-close" id="logPanelClose"
+                    aria-label="Cerrar panel" title="Cerrar panel">
+                    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>
+                </button>
             </div>
             <div class="log-container" id="logContainer">
                 <div class="log-entry info">Sistema iniciado - vista previa en vivo disponible al conectar</div>
@@ -111,9 +146,11 @@
 
         <aside class="side-panel" id="scriptPanel" aria-hidden="true" aria-labelledby="scriptPanelTitle">
             <div class="side-panel-header">
-                <h3 id="scriptPanelTitle">📜 Control de Scripts</h3>
-                <button type="button" class="side-panel-close" id="scriptPanelClose" onclick="closePanel()"
-                    aria-label="Cerrar panel" title="Cerrar panel">✕</button>
+                <h3 id="scriptPanelTitle"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="m5 4.5-3 3.5 3 3.5M11 4.5l3 3.5-3 3.5"/></svg>Control de Scripts</h3>
+                <button type="button" class="side-panel-close" id="scriptPanelClose"
+                    aria-label="Cerrar panel" title="Cerrar panel">
+                    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>
+                </button>
             </div>
             <div class="script-controls">
                 <div class="script-editor">
@@ -122,11 +159,9 @@
                 <div class="script-right-panel">
                     <div class="script-buttons">
                         <input type="file" id="scriptFileInput" accept=".txt,.script" style="display: none;">
-                        <button class="btn btn-info" onclick="loadScriptFile()">📁 Cargar Script</button>
-                        <button class="btn btn-success" onclick="executeScript()" id="executeBtn">▶️
-                            Ejecutar</button>
-                        <button class="btn btn-danger" onclick="stopScript()" id="stopBtn" disabled>⏹️
-                            Parar</button>
+                        <button class="btn btn-info" id="loadScriptBtn">Cargar Script</button>
+                        <button class="btn btn-success" id="executeBtn">Ejecutar</button>
+                        <button class="btn btn-danger" id="stopBtn" disabled>Parar</button>
                     </div>
                     <div class="script-status">
                         <span id="scriptStatus">Estado: Listo</span>
