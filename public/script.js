@@ -22,6 +22,11 @@ const previewHelp = document.getElementById('previewHelp');
 let currentPreviewStatus = null;
 let pendingFrameRender = false;
 let queuedManualScreenshot = null;
+let activeSessionId = localStorage.getItem('pyrock.activeSession');
+let sessionRecords = [];
+let sessionMaximum = 5;
+let closeConfirmTimer = null;
+let armedCloseButton = null;
 
 // Elementos del DOM para scripts
 const scriptEditor = document.getElementById('scriptEditor');
@@ -280,6 +285,74 @@ preview.addEventListener('click', (event) => {
     sendClick();
 });
 
+async function refreshSessions() {
+    if (!pyrock || !pyrock.isConnected || typeof pyrock.listSessions !== 'function') return;
+    const result = await pyrock.listSessions();
+    sessionRecords = result.sessions || []; sessionMaximum = result.max || 5;
+    const list = document.getElementById('sessionList'); list.replaceChildren();
+    const add = document.getElementById('sessionAdd');
+    add.disabled = sessionRecords.length >= sessionMaximum; add.title = add.disabled ? 'Límite de secciones alcanzado' : 'Agregar sección';
+    sessionRecords.forEach((section, index) => {
+        const li = document.createElement('li'); li.classList.toggle('active', section.id === activeSessionId);
+        const button = document.createElement('button'); button.type = 'button'; button.title = section.name; button.setAttribute('aria-label', section.name);
+        button.setAttribute('aria-current', section.id === activeSessionId ? 'true' : 'false');
+        const number = document.createElement('span'); number.textContent = String(index + 1);
+        const name = document.createElement('span'); name.className = 'session-name'; name.textContent = section.name.slice(0, 4);
+        button.append(number, name); button.addEventListener('click', () => activateSession(section)); li.append(button);
+        const close = document.createElement('button'); close.type = 'button'; close.className = 'session-close'; close.textContent = '✕'; close.disabled = sessionRecords.length <= 1; close.setAttribute('aria-label', `Cerrar ${section.name}`);
+        close.addEventListener('click', async () => {
+            if (sessionRecords.length <= 1) return;
+            if (close.dataset.confirm !== 'yes') {
+                if (armedCloseButton && armedCloseButton !== close) {
+                    clearTimeout(closeConfirmTimer);
+                    armedCloseButton.dataset.confirm = '';
+                    armedCloseButton.textContent = '✕';
+                }
+                armedCloseButton = close;
+                close.dataset.confirm = 'yes'; close.textContent = '?';
+                clearTimeout(closeConfirmTimer);
+                closeConfirmTimer = setTimeout(() => {
+                    if (armedCloseButton === close) armedCloseButton = null;
+                    close.dataset.confirm = ''; close.textContent = '✕';
+                }, 3000);
+                return;
+            }
+            clearTimeout(closeConfirmTimer); armedCloseButton = null;
+            const neighbor = sessionRecords[Math.max(0, index - 1)];
+            await pyrock.closeSession(section.id);
+            if (section.id === activeSessionId) activeSessionId = neighbor?.id || null;
+            await refreshSessions();
+            if (section.id === localStorage.getItem('pyrock.activeSession') && neighbor) await activateSession(neighbor);
+        }); li.append(close); list.append(li);
+    });
+    if (!sessionRecords.some(s => s.id === activeSessionId)) {
+        activeSessionId = null;
+        const current = sessionRecords.find(s => s.id === result.default);
+        if (current) activateSession(current);
+    } else {
+        const current = sessionRecords.find(s => s.id === activeSessionId);
+        if (current && localStorage.getItem('pyrock.activeSession') === current.id) {
+            document.getElementById('urlInput').value = current.url || '';
+        }
+    }
+}
+function activateSession(section) {
+    if (!section) return;
+    activeSessionId = section.id; localStorage.setItem('pyrock.activeSession', section.id);
+    pyrock.switchSession(section.id); pendingFrameRender = false; queuedManualScreenshot = null;
+    preview.style.display = 'none'; loadingText.style.display = 'block'; loadingText.textContent = '⏳ Cargando sección…';
+    document.getElementById('urlInput').value = section.url || ''; refreshSessions();
+}
+async function addSessionInline() {
+    const list = document.getElementById('sessionList'); if (list.querySelector('input')) return;
+    const li = document.createElement('li'), input = document.createElement('input'); input.setAttribute('aria-label', 'Nombre de sección');
+    li.append(input); list.prepend(li); const cancel = () => li.remove();
+    input.addEventListener('keydown', async e => { if (e.key === 'Escape') cancel(); if (e.key === 'Enter') { try { const result = await pyrock.createSession(input.value.trim() || undefined); await refreshSessions(); activateSession(result.session); } catch (error) { addLog(error.message, 'error'); } } });
+    input.addEventListener('blur', cancel); input.focus();
+}
+document.getElementById('sessionAdd').addEventListener('click', addSessionInline);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshSessions(); });
+
 // Inicializar aplicación
 window.addEventListener('load', async () => {
     addLog('Iniciando PyRock...', 'info');
@@ -291,6 +364,8 @@ window.addEventListener('load', async () => {
         addLog(`🔧 Conectando a: ${config.serverUrl || 'http://localhost:3000'}`, 'info');
         
         pyrock = new PyRockHTTP({
+            sessionId: localStorage.getItem('pyrock.activeSession'),
+            onSessionGone: async () => { await refreshSessions(); },
             serverUrl: config.serverUrl || 'http://localhost:3000',
             statusPollIntervalMs: config.statusPollIntervalMs || 30000,
             onLog: (message, type = 'info') => {
@@ -377,6 +452,7 @@ window.addEventListener('load', async () => {
             const connected = await pyrock.connect();
             if (connected) {
                 addLog('PyRock HTTP inicializado correctamente', 'success');
+                await refreshSessions();
                 
             } else {
                 addLog('Error conectando al servidor', 'error');
@@ -478,7 +554,13 @@ async function executeScript() {
         return;
     }
 
+    const previousClient = scriptParser.pyRock;
+    let originalIndicator;
     try {
+        const runSessionId = activeSessionId;
+        scriptParser.pyRock = pyrock.forSession(runSessionId);
+        originalIndicator = scriptParser.visualIndicators?.showClickIndicator;
+        if (scriptParser.visualIndicators) scriptParser.visualIndicators.showClickIndicator = (...args) => { if (activeSessionId === runSessionId) originalIndicator?.(...args); };
         isScriptRunning = true;
         executeBtn.disabled = true;
         stopBtn.disabled = false;
@@ -534,6 +616,7 @@ async function executeScript() {
         updateScriptStatus('Error');
     } finally {
         // Restablecer completamente el estado
+        if (scriptParser) { scriptParser.pyRock = previousClient; if (scriptParser.visualIndicators && originalIndicator) scriptParser.visualIndicators.showClickIndicator = originalIndicator; }
         isScriptRunning = false;
         currentScriptExecution = null;
         
@@ -599,27 +682,4 @@ function updateScriptProgress(progress) {
     scriptProgress.textContent = progress;
 }
 
-// Limpiar completamente el estado del script
-function resetScriptState() {
-    // Detener ejecución si está corriendo
-    if (isScriptRunning) {
-        isScriptRunning = false;
-    }
-    
-    // Limpiar variables globales
-    currentScriptExecution = null;
-    
-    // Limpiar parser
-    if (scriptParser) {
-        scriptParser.commands = [];
-        scriptParser.currentLine = 0;
-    }
-    
-    // Restablecer UI
-    updateScriptStatus('Listo');
-    updateScriptProgress('');
-    executeBtn.disabled = false;
-    stopBtn.disabled = true;
-    
-    addLog('Estado del script restablecido completamente', 'info');
-}
+// Script state is restored by executeScript's finally block.

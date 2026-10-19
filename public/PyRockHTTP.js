@@ -4,6 +4,8 @@
 class PyRockHTTP {
     constructor(options = {}) {
         this.serverUrl = options.serverUrl || 'http://localhost:3000';
+        this.sessionId = options.sessionId ?? null;
+        this.onSessionGone = options.onSessionGone || (() => {});
         this.statusPollIntervalMs = options.statusPollIntervalMs || 30000;
         this.maxRetries = options.maxRetries ?? 3;
         this.retryDelay = options.retryDelay ?? 1000;
@@ -50,7 +52,7 @@ class PyRockHTTP {
             if (response.browser === 'disconnected') {
                 this.onLog('Inicializando navegador automáticamente...');
                 try {
-                    await this.initBrowser();
+                    await this.initBrowser({ all: true });
                 } catch (error) {
                     this.onLog(`Error inicializando navegador: ${error.message}`);
                 }
@@ -60,6 +62,13 @@ class PyRockHTTP {
             this.openPreviewSocket(generation);
             return true;
         } catch (error) {
+            if (generation === this.connectionGeneration && error.status === 404 && this.sessionId) {
+                const staleId = this.sessionId;
+                this.sessionId = null;
+                const recovered = await this.connectOnce();
+                if (recovered) await this.onSessionGone(staleId);
+                return recovered;
+            }
             if (generation === this.connectionGeneration) {
                 this.onLog(`Error conectando: ${error.message}`);
                 this.isConnected = false;
@@ -90,7 +99,7 @@ class PyRockHTTP {
             const url = new URL(this.serverUrl);
             url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
             url.pathname = '/ws/preview';
-            url.search = '';
+            url.search = this.sessionId ? `?session=${encodeURIComponent(this.sessionId)}` : '';
             url.hash = '';
             return url.toString();
         } catch (error) {
@@ -125,9 +134,14 @@ class PyRockHTTP {
         socket.onerror = () => {
             if (this.isCurrentSocket(socket, generation)) this.onPreviewStatus('unavailable', 'Preview WebSocket error');
         };
-        socket.onclose = () => {
+        socket.onclose = event => {
             if (!this.isCurrentSocket(socket, generation)) return;
             this.previewSocket = null;
+            if (event?.code === 4404) {
+                this.onPreviewStatus('unavailable', 'Sección no encontrada');
+                this.onSessionGone(this.sessionId);
+                return;
+            }
             this.onPreviewStatus('reconnecting');
             this.scheduleReconnect(generation);
         };
@@ -228,8 +242,16 @@ class PyRockHTTP {
         }
     }
 
-    async makeRequest(endpoint, method = 'GET', data = null) {
+    async makeRequest(endpoint, method = 'GET', data = null, { includeSession = true } = {}) {
+        const isSessionManagement = endpoint === '/api/sessions' || endpoint.startsWith('/api/sessions/');
+        if (includeSession && !isSessionManagement && this.sessionId && method === 'GET') {
+            const separator = endpoint.includes('?') ? '&' : '?';
+            endpoint = `${endpoint}${separator}session=${encodeURIComponent(this.sessionId)}`;
+        }
         const url = `${this.serverUrl}${endpoint}`;
+        if (includeSession && !isSessionManagement && this.sessionId && endpoint.startsWith('/api/') && method !== 'GET') {
+            data = { ...(data || {}), session: this.sessionId };
+        }
         const options = { method, headers: { 'Content-Type': 'application/json' } };
         if (data && method !== 'GET') options.body = JSON.stringify(data);
         let attempt = 0;
@@ -244,11 +266,14 @@ class PyRockHTTP {
                         await new Promise(resolve => setTimeout(resolve, this.retryDelay * attempt));
                         continue;
                     }
-                    throw new Error(`HTTP ${status}: ${statusText}`);
+                    const error = new Error(`HTTP ${status}: ${statusText}`);
+                    error.status = status;
+                    if (status === 404 && this.sessionId && this.isConnected) this.onSessionGone(this.sessionId);
+                    throw error;
                 }
                 return await response.json();
             } catch (error) {
-                if (attempt < this.maxRetries) {
+                if (attempt < this.maxRetries && !error.status) {
                     attempt++;
                     await new Promise(resolve => setTimeout(resolve, this.retryDelay * attempt));
                     continue;
@@ -269,9 +294,10 @@ class PyRockHTTP {
 
     async takeScreenshot() {
         if (!this.isConnected) throw new Error('No conectado al servidor');
+        const requestedSession = this.sessionId;
         const result = await this.makeRequest('/api/screenshot', 'POST');
         if (result.success) {
-            if (result.screenshot) this.onScreenshotUpdate(result.screenshot);
+            if (result.screenshot && this.sessionId === requestedSession) this.onScreenshotUpdate(result.screenshot);
         } else this.onLog(`Error tomando screenshot: ${result.error}`);
         return result;
     }
@@ -303,13 +329,34 @@ class PyRockHTTP {
         return result;
     }
 
-    async initBrowser() {
+    async initBrowser({ all = false } = {}) {
         if (!this.isConnected) throw new Error('No conectado al servidor');
         this.onLog('Inicializando navegador...');
-        const result = await this.makeRequest('/api/init', 'POST');
+        const result = await this.makeRequest('/api/init', 'POST', {}, { includeSession: !all });
         if (result.success) this.onLog('Navegador inicializado exitosamente');
         else this.onLog(`Error inicializando navegador: ${result.error}`);
         return result;
+    }
+
+    async listSessions() { return this.makeRequest('/api/sessions'); }
+    async createSession(name) { return this.makeRequest('/api/sessions', 'POST', name ? { name } : {}); }
+    async closeSession(id) { return this.makeRequest(`/api/sessions/${encodeURIComponent(id)}`, 'DELETE'); }
+
+    switchSession(id) {
+        if (this.sessionId === id) return;
+        this.sessionId = id;
+        this.retryIndex = 0;
+        this.clearReconnectTimer();
+        const socket = this.previewSocket;
+        this.previewSocket = null;
+        if (socket && socket.readyState < 2) socket.close();
+        if (this.isConnected) this.openPreviewSocket(this.connectionGeneration);
+    }
+
+    forSession(id) {
+        const client = Object.create(this);
+        client.sessionId = id;
+        return client;
     }
 
     async getStatus() {

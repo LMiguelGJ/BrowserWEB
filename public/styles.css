@@ -560,6 +560,22 @@ body {
     }
 }
 
+.session-bar {
+    position: fixed; inset: 0 auto 0 0; z-index: 2200; width: 76px; padding: 8px;
+    background: #fff; box-shadow: 2px 0 12px #0002; overflow-y: auto;
+}
+.session-bar ul { list-style: none; }
+.session-bar li { position: relative; margin: 6px 0; }
+.session-bar li > button:first-child, #sessionAdd {
+    width: 56px; min-height: 56px; border: 0; border-radius: 8px; cursor: pointer; background: #f1f3f5;
+}
+.session-bar li.active > button:first-child { background: #dbeafe; outline: 2px solid #007bff; }
+.session-bar .session-name { display: block; max-width: 50px; overflow: hidden; text-overflow: ellipsis; }
+.session-bar .session-close { position: absolute; right: 0; top: 0; opacity: 0; width: 22px; }
+.session-bar li:hover .session-close, .session-bar li:focus-within .session-close { opacity: 1; }
+.session-bar input { width: 58px; }
+@media (max-width: 1600px) { .container { padding-left: 92px; } }
+
 @media (max-width: 1500px) {
     /* Below this width the fixed tabs would sit on top of the controls card */
     .container {
