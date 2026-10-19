@@ -237,7 +237,7 @@ function createCamoufoxEngine({ loader = () => import('camoufox-js'), launchOpti
             }
             return Camoufox(options);
         },
-        async openPage(browser) {
+        async openPage(browser, { onPopup } = {}) {
             // No context options: Camoufox generates and owns the fingerprint,
             // and overriding its viewport or locale would break consistency.
             const context = await browser.newContext();
@@ -263,6 +263,15 @@ function createCamoufoxEngine({ loader = () => import('camoufox-js'), launchOpti
                 raw.on('requestfinished', request => inFlight.delete(request));
                 raw.on('requestfailed', request => inFlight.delete(request));
                 page.pendingRequests = () => [...inFlight].map(request => request.url());
+                // A site that opens a link in a new tab (a session link, a popup)
+                // is reported so the section can follow it: otherwise the preview
+                // would keep showing the page that opened the tab.
+                if (typeof onPopup === 'function' && typeof context.on === 'function') {
+                    context.on('page', popup => {
+                        if (popup === raw) return;
+                        Promise.resolve(onPopup(wrapPage(popup))).catch(() => {});
+                    });
+                }
                 // Ad and consent networks can hold a page in its loader; blocking
                 // them is opt-in (PYROCK_BLOCK_ADS=1) because some sites need
                 // their consent script to boot.

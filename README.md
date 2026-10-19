@@ -95,6 +95,9 @@ PyRock/
 
 ### Controles Disponibles
 
+- **Preview en vivo** de la sección activa (video de la página, 1:1 con sus píxeles CSS)
+- La sección **sigue las pestañas que abre la web**: si un sitio abre un enlace en otra pestaña (por ejemplo, un link de sesión), la sección pasa a previsualizar esa pestaña en lugar de quedarse en la que la abrió
+
 1. **Navegación**
    - Ingresa una URL en el campo de texto
    - Haz clic en "Navegar" para ir a la página

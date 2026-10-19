@@ -34,10 +34,11 @@ function reset() {
     return globalThis.__pyrockCamoufoxState;
 }
 
-function makePage(context) {
+function makePage(context, label = 'shot') {
     const page = new EventEmitter();
     page.calls = [];
     page.closed = false;
+    page.label = label;
     page.url = () => 'about:blank';
     page.isClosed = () => page.closed;
     page.goto = async (url) => {
@@ -46,7 +47,7 @@ function makePage(context) {
     };
     page.screenshot = async options => {
         page.calls.push(['screenshot', options]);
-        return Buffer.from('shot');
+        return Buffer.from(label);
     };
     page.mouse = {
         move: async (...args) => page.calls.push(['move', ...args]),
@@ -70,13 +71,24 @@ function makeBrowser() {
     browser.close = async () => { browser.closeCount++; browser.emit('disconnected'); };
     browser.newContext = async () => {
         const state = currentState();
-        const context = { closed: false, pages: [] };
+        const context = new EventEmitter();
+        context.closed = false;
+        context.pages = [];
         context.newPage = async () => {
             const config = globalThis.__pyrockCamoufoxConfig || {};
             if (config.beforeNewPage) await config.beforeNewPage(context);
-            const page = makePage(context);
+            const page = makePage(context, 'shot');
             context.pages.push(page);
             state.pages.push(page);
+            return page;
+        };
+        // A site that opens a link in a new tab (a session link, a popup) is
+        // reported to the engine, which hands it to the section.
+        context.openPopup = async (label = 'popup') => {
+            const page = makePage(context, label);
+            context.pages.push(page);
+            state.pages.push(page);
+            context.emit('page', page);
             return page;
         };
         context.close = async () => { context.closed = true; };

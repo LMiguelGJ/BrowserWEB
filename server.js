@@ -55,9 +55,11 @@ async function ensureBrowser() {
 // injects no Chrome-style patches, because they would contradict it.
 const sessions = createSessionManager({
     maxSessions: MAX_SESSIONS,
-    async openPage() {
+    async openPage(section) {
         const activeBrowser = await ensureBrowser();
-        const opened = await engine.openPage(activeBrowser);
+        const opened = await engine.openPage(activeBrowser, {
+            onPopup: popup => sessions.adopt(section, popup)
+        });
         if (shuttingDown || browser !== activeBrowser) {
             try { await engine.closeContext(opened.context); } catch (closeError) { shutdownCleanupError ||= closeError; }
             throw Object.assign(new Error('Browser unavailable'), { status: 503 });

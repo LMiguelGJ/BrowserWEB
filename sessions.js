@@ -27,6 +27,21 @@ function createSessionManager({ openPage, closeContext, createController, maxSes
             }
         }
     }
+    // Adopts a page the site opened itself (a session link, a popup): the
+    // section follows it, so the preview shows where the site actually went.
+    async function adoptPage(section, page) {
+        if (!page || section.page === page) return section;
+        section.page = page;
+        if (section.controller?.setPage) await section.controller.setPage(page);
+        page?.once?.('close', () => {
+            if (section.page !== page) return;
+            section.state = 'unavailable';
+            Promise.resolve(section.controller?.setUnavailable?.('Browser page closed')).catch(() => {});
+        });
+        section.lastScreenshot = null;
+        section.state = 'ready';
+        return section;
+    }
     async function open(section) {
         const opened = await openPage(section);
         if (closed) {
@@ -96,6 +111,9 @@ function createSessionManager({ openPage, closeContext, createController, maxSes
                 for (const section of existing) await open(section);
                 return true;
             });
+        },
+        adopt(section, page) {
+            return adoptPage(section, page);
         },
         markUnavailable() {
             for (const section of sessions.values()) {
