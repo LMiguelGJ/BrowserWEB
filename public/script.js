@@ -4,7 +4,6 @@ let pyrock = null;
 // Instancia del parser de scripts
 let scriptParser = null;
 let isScriptRunning = false;
-let currentScriptExecution = null;
 
 // Side panels (log and scripts): only one is open at a time.
 const PANEL_TABS = { logPanel: 'tabLog', scriptPanel: 'tabScripts' };
@@ -107,12 +106,42 @@ document.addEventListener('keydown', (event) => {
 });
 
 // Funciones de control usando PyRockHTTP (REST API)
+// Refleja en el panel dónde está realmente la sección activa: la URL cambia
+// sola cuando el sitio abre otra pestaña, y el modo de preview dice si los
+// frames vienen de screencast o del sondeo de capturas.
+let lastSectionUrl = '';
+let lastListSignature = '';
+
+function showPreviewMode(mode) {
+    const element = document.getElementById('previewMode');
+    if (!element) return;
+    if (mode === 'poll') element.textContent = 'sondeo de capturas';
+    else if (mode === 'screencast') element.textContent = 'screencast';
+    else element.textContent = '';
+}
+
+function applySectionState(section) {
+    if (!section) return;
+    const url = section.url || '';
+    if (url && url !== lastSectionUrl) {
+        const host = (() => { try { return new URL(url).hostname; } catch { return ''; } })();
+        if (lastSectionUrl) addLog(`Se siguió una pestaña nueva: ${host}`, 'info');
+        lastSectionUrl = url;
+    }
+    const field = document.getElementById('urlInput');
+    // Lo que el operador está tipeando no se pisa.
+    if (field && url && url !== field.value && document.activeElement !== field) field.value = url;
+    if (section.previewMode) showPreviewMode(section.previewMode);
+    if (section.diagnosis) showDiagnosis(section.diagnosis);
+}
+
 // Muestra en el panel por qué una página quedó en blanco: el dato viene del
 // servidor (qué estado tiene el documento y qué petición sigue pendiente).
+let lastDiagnosisMessage = '';
 function showDiagnosis(diagnosis) {
     const hint = document.getElementById('previewHint');
     if (!hint) return;
-    if (!diagnosis || diagnosis.error) { hint.hidden = true; return; }
+    if (!diagnosis || diagnosis.error) { hint.hidden = true; lastDiagnosisMessage = ''; return; }
     const pending = diagnosis.pending || [];
     let message = '';
     if (diagnosis.readyState && diagnosis.readyState !== 'complete') {
@@ -121,10 +150,10 @@ function showDiagnosis(diagnosis) {
     } else if (diagnosis.textLength === 0) {
         message = 'La página cargó pero no muestra nada: suele pedir una sesión iniciada o estar bloqueada.';
     }
-    if (!message) { hint.hidden = true; return; }
+    if (!message) { hint.hidden = true; lastDiagnosisMessage = ''; return; }
     hint.textContent = message;
     hint.hidden = false;
-    addLog(message, 'info');
+    if (message !== lastDiagnosisMessage) { lastDiagnosisMessage = message; addLog(message, 'info'); }
 }
 
 async function navigate(url = null) {
@@ -326,10 +355,17 @@ async function refreshSessions() {
     sessionRecords = result.sessions || []; sessionMaximum = result.max || 5;
     const deckBus = document.getElementById('deckBus');
     if (deckBus) deckBus.textContent = `PVW → PGM · ${sessionRecords.find(s => s.id === activeSessionId)?.name || '—'}`;
-    const list = document.getElementById('sessionList'); list.replaceChildren();
+    const list = document.getElementById('sessionList');
     const add = document.getElementById('sessionAdd');
     add.disabled = sessionRecords.length >= sessionMaximum; add.title = add.disabled ? 'Límite de secciones alcanzado' : 'Agregar sección';
-    sessionRecords.forEach((section, index) => {
+    // La lista solo se reconstruye cuando cambió: el refresco periódico no
+    // puede borrar el nombre que se está escribiendo ni la confirmación de un
+    // cierre a medio confirmar.
+    const signature = sessionRecords.map(s => `${s.id}:${s.name}:${s.id === activeSessionId ? '1' : '0'}`).join('|');
+    if (!list.querySelector('input') && signature !== lastListSignature) {
+        lastListSignature = signature;
+        list.replaceChildren();
+        sessionRecords.forEach((section, index) => {
         const li = document.createElement('li'); li.classList.toggle('active', section.id === activeSessionId);
         const button = document.createElement('button'); button.type = 'button'; button.title = section.name; button.setAttribute('aria-label', section.name);
         button.setAttribute('aria-current', section.id === activeSessionId ? 'true' : 'false');
@@ -362,23 +398,23 @@ async function refreshSessions() {
             if (section.id === localStorage.getItem('pyrock.activeSession') && neighbor) await activateSession(neighbor);
         }); li.append(close); list.append(li);
     });
+    }
     if (!sessionRecords.some(s => s.id === activeSessionId)) {
         activeSessionId = null;
         const current = sessionRecords.find(s => s.id === result.default);
         if (current) activateSession(current);
-    } else {
-        const current = sessionRecords.find(s => s.id === activeSessionId);
-        if (current && localStorage.getItem('pyrock.activeSession') === current.id) {
-            document.getElementById('urlInput').value = current.url || '';
-        }
     }
+    // Un solo dueño del campo de URL: si el operador está tipeando, no se pisa.
+    applySectionState(sessionRecords.find(s => s.id === activeSessionId));
 }
 function activateSession(section) {
     if (!section) return;
     activeSessionId = section.id; localStorage.setItem('pyrock.activeSession', section.id);
     pyrock.switchSession(section.id); pendingFrameRender = false; queuedManualScreenshot = null;
     preview.style.display = 'none'; loadingText.style.display = 'block'; loadingText.textContent = 'Cargando sección…';
-    document.getElementById('urlInput').value = section.url || ''; refreshSessions();
+    const field = document.getElementById('urlInput');
+    if (document.activeElement !== field) field.value = section.url || '';
+    refreshSessions();
 }
 async function addSessionInline() {
     const list = document.getElementById('sessionList'); if (list.querySelector('input')) return;
@@ -492,7 +528,10 @@ window.addEventListener('load', async () => {
             if (connected) {
                 addLog('PyRock HTTP inicializado correctamente', 'success');
                 await refreshSessions();
-                
+                // Refresco periódico: mantiene al panel al tanto de dónde está la
+                // sección (que cambia sola si el sitio abre otra pestaña) como del
+                // estado de la página que sigue cargando.
+                setInterval(() => { refreshSessions(); }, 3000);
             } else {
                 addLog('Error conectando al servidor', 'error');
                 updateStatus('Error de conexión', false);
@@ -546,7 +585,6 @@ scriptFileInput.addEventListener('change', (event) => {
             }
             
             // Restablecer variables y estado
-            currentScriptExecution = null;
             if (scriptParser) {
                 scriptParser.commands = [];
                 scriptParser.currentLine = 0;
@@ -657,8 +695,7 @@ async function executeScript() {
         // Restablecer completamente el estado
         if (scriptParser) { scriptParser.pyRock = previousClient; if (scriptParser.visualIndicators && originalIndicator) scriptParser.visualIndicators.showClickIndicator = originalIndicator; }
         isScriptRunning = false;
-        currentScriptExecution = null;
-        
+
         // Limpiar parser
         if (scriptParser) {
             scriptParser.commands = [];
@@ -692,8 +729,7 @@ function stopScript() {
         // Limpiar completamente todas las variables y estado
         setTimeout(() => {
             // Restablecer variables globales
-            currentScriptExecution = null;
-            
+
             // Limpiar parser si existe
             if (scriptParser) {
                 scriptParser.commands = [];

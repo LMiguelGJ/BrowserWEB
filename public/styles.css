@@ -649,6 +649,14 @@ input[type="number"] {
     border-top: 1px solid var(--console-line);
 }
 
+.deck-mode {
+    font-family: var(--font-data);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-low);
+}
+
 .deck-bus {
     font-family: var(--font-data);
     font-size: 13px;

@@ -66,9 +66,9 @@ function createScriptHarness({ sessions = [{ id: 's1', name: 'One', url: 'https:
     loadScript(){return [{lineNumber:1,originalLine:'click'}];}
     async executeCommand(){operations.push(['execute',this.pyRock.sessionId]);await onExecute?.();this.visualIndicators.showClickIndicator(1,2);}
   }
-  const context={document,window,localStorage:{getItem:k=>local.get(k)||null,setItem:(k,v)=>local.set(k,v)},PyRockHTTP:FakeClient,PyRockScriptParser:FakeParser,console:{log(){},error(){}},Date,
+  const context={document,window,localStorage:{getItem:k=>local.get(k)||null,setItem:(k,v)=>local.set(k,v)},PyRockHTTP:FakeClient,PyRockScriptParser:FakeParser,console:{log(){},error(){}},Date,URL,
     setTimeout(fn,delay){const t={fn,delay,cancelled:false};timers.push(t);return t;},clearTimeout(t){if(t)t.cancelled=true;},setImmediate};
-  vm.runInNewContext(`${fs.readFileSync('public/script.js','utf8')}\nwindow.__testApi={refreshSessions,activateSession,addSessionInline,executeScript,initBrowser};`,context,{filename:'public/script.js'});
+  vm.runInNewContext(`${fs.readFileSync('public/script.js','utf8')}\nwindow.__testApi={refreshSessions,activateSession,addSessionInline,executeScript,initBrowser,showDiagnosis,showPreviewMode};`,context,{filename:'public/script.js'});
   return {document,elements,window,context,operations,timers,local,clicks,presses, get client(){return client;},get options(){return options;}, async load(){await window.dispatch('load');return options;}, api:()=>window.__testApi};
 }
 module.exports={createHarness,createScriptHarness};
