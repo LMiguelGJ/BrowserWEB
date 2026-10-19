@@ -172,6 +172,14 @@ Hay **un proceso Chromium compartido** y varias secciones independientes, cada u
   - Para que el navegador mantenga la **misma IP** en todas las peticiones (cookies de sesión, WebSockets de video, streams), usá un **puerto sticky** del rango 10000-20000 en lugar del puerto rotativo: la IP queda ligada a ese puerto y no hay que tocar el usuario. Un puerto rotativo reparte cada petición por una IP distinta y eso rompe las sesiones.
 - `PYROCK_GEOIP` - Con `1`, la geolocalización de la huella (latitud, longitud, zona horaria) se calcula a partir de la IP del proxy, para que no se contradiga. `camoufox-js` avisa cuando se usa un proxy sin esto.
 - `PYROCK_BLOCK_ADS` - Con `1`, se cortan las peticiones a redes de anuncios, consent y analítica. Una página que espera a uno de esos scripts puede quedarse en su pantalla de carga; algunos de ellos (un challenge de Cloudflare servido por una red de anuncios) incluso nunca resuelven. Está desactivado por defecto porque hay sitios que necesitan su script de consent para arrancar.
+- `PYROCK_SETTLE_TIMEOUT_MS` - Cuánto espera el servidor a que la página *se vea* (documento listo y con contenido) antes de responder. Default `20000`. Si se agota, la navegación responde con éxito pero `settled: false` y el estado real de la página, y el panel lo muestra.
+
+### El panel y las pestañas que abre la web
+
+- La sección **sigue las pestañas que abre la web** (un link de sesión, por ejemplo): si son del mismo sitio, la sección pasa a previsualizar esa pestaña.
+- El campo de URL refleja dónde está realmente la sección, y el panel avisa cuando siguió otra pestaña. Lo que estás escribiendo nunca se pisa.
+- El pie del panel dice **cómo llegan los fotogramas**: `screencast` (frames nativos) o `sondeo de capturas` (5 fps, cuando el build no expone `page.screencast`).
+- Cuando una página no termina de cargar, el panel lo dice en el preview: cuántas peticiones siguen pendientes y de qué host, o que cargó pero no muestra nada.
 
 ### Motor: Camoufox
 
