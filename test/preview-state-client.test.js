@@ -87,7 +87,7 @@ test('the network panel shows the exit, the mode and one row per section', async
             configured: true, host: 'gw.example', port: '823', mode: 'sticky', stickyBase: 10000,
             credentials: 'user:••••••••',
             sections: [
-                { id: 's1', name: 'Sección 1', proxy: 'http://gw.example:10001', ip: '157.34.27.193', measuredAt: '2026-10-19T19:40:12.000Z' },
+                { id: 's1', name: 'Sección 1', proxy: 'http://gw.example:10001', port: 10001, ipCount: 3, ip: '157.34.27.193', measuredAt: '2026-10-19T19:40:12.000Z' },
                 { id: 's2', name: 'Sección 2', proxy: 'http://gw.example:10002', ip: null, measuredAt: null }
             ]
         }
@@ -100,5 +100,7 @@ test('the network panel shows the exit, the mode and one row per section', async
     assert.match(text, /sticky/i, 'the mode is shown');
     assert.match(text, /157\.34\.27\.193/, 'the measured IP is shown');
     assert.match(text, /Sección 2/, 'every section has a row');
+    assert.match(text, /puerto 10001/, 'the section shows the port it leaves through');
+    assert.match(text, /3 IPs distintas/, 'the panel says when the exit is rotating');
     assert.doesNotMatch(text, /secret/i, 'the password is never rendered');
 });

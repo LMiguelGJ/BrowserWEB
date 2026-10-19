@@ -26,6 +26,7 @@ test('the network answer says how the browser exits and which IP each section us
         assert.equal(before.credentials, 'user:••••••••', 'the password is never shown');
         assert.ok(before.sections.length >= 1);
         assert.match(before.sections[0].proxy, /:10001$/, 'the first section uses the first sticky port');
+        assert.equal(before.sections[0].port, 10001, 'the section reports its own port');
 
         const measured = await (await fetch(`${base}/api/network/measure`, {
             method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}'
@@ -33,6 +34,7 @@ test('the network answer says how the browser exits and which IP each section us
         assert.equal(measured.sections.length, before.sections.length);
         assert.ok(measured.sections.every(section => section.ip), 'every section reports an IP');
         assert.ok(measured.sections.every(section => section.measuredAt), 'and says when it was measured');
+        assert.equal(measured.sections[0].ipCount, 1, 'one IP seen so far in this section');
 
         const after = await (await fetch(`${base}/api/network`)).json();
         assert.ok(after.sections.every(section => section.ip), 'the last measurement is kept');

@@ -210,6 +210,11 @@ function proxyOrigin(template, port) {
     return `${template.scheme}://${template.host}:${port}`;
 }
 
+// El puerto de un proxy, sin arriesgar una URL mal formada.
+function proxyPort(server) {
+    try { return Number(new URL(server).port) || null; } catch { return null; }
+}
+
 // The proxy a section uses: its own sticky port, so every section keeps a
 // stable exit IP instead of getting a new one on every request.
 function sectionProxy(sectionId) {
@@ -403,4 +408,4 @@ function createCamoufoxEngine({ loader = () => import('camoufox-js'), launchOpti
     };
 }
 
-module.exports = { createCamoufoxEngine, wrapPage, createFrameSession, measurePage, parseHeadless, diagnosePage, sectionProxy, parseProxyTemplate, stickyBase };
+module.exports = { createCamoufoxEngine, wrapPage, createFrameSession, measurePage, parseHeadless, diagnosePage, sectionProxy, parseProxyTemplate, stickyBase, buildProxyUrl, proxyPort };

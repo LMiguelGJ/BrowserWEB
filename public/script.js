@@ -134,7 +134,12 @@ async function renderNetwork() {
         name.textContent = section.name;
         const ip = document.createElement('span');
         ip.className = 'net-value';
-        ip.textContent = section.ip ? `${section.ip} · ${new Date(section.measuredAt).toLocaleTimeString()}` : 'sin medir';
+        const parts = [];
+        if (section.ip) parts.push(section.ip);
+        if (section.port) parts.push(`puerto ${section.port}`);
+        if (section.measuredAt) parts.push(new Date(section.measuredAt).toLocaleTimeString());
+        if (section.ipCount > 1) parts.push(`${section.ipCount} IPs distintas`);
+        ip.textContent = parts.length ? parts.join(' · ') : 'sin medir';
         line.append(name, ip);
         body.append(line);
     }

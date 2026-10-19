@@ -15,10 +15,16 @@ const waitFor = async (predicate, message, timeoutMs = 10_000) => {
 test('isolated sections keep cookies, actions and preview frames separate across restart and browser recovery', { timeout: 180_000 }, async t => {
     const path = require('node:path');
     const originalModule = process.env.PYROCK_CAMOUFOX_MODULE;
+    const originalProxy = process.env.PYROCK_PROXY;
+    const originalStickyBase = process.env.PYROCK_PROXY_STICKY_BASE;
     // A real browser, launched through the same camoufox-js contract the server uses.
     // The Camoufox binary itself is not needed here: the engine path (Playwright
     // adapter, screencast bridge, context isolation, crash recovery) is what is tested.
     process.env.PYROCK_CAMOUFOX_MODULE = path.join(__dirname, 'fixtures', 'playwright-chromium-camoufox.js');
+    // The local .env must not decide how this test reaches the network: a proxy
+    // would send the test server itself through a remote gateway.
+    process.env.PYROCK_PROXY = '';
+    process.env.PYROCK_PROXY_STICKY_BASE = '';
     const sockets = new Set();
     const observedCookies = new Map();
     const observedActions = [];
@@ -54,6 +60,10 @@ test('isolated sections keep cookies, actions and preview frames separate across
         try { await require('./fixtures/playwright-chromium-camoufox').stop(); } catch { /* already gone */ }
         if (originalModule === undefined) delete process.env.PYROCK_CAMOUFOX_MODULE;
         else process.env.PYROCK_CAMOUFOX_MODULE = originalModule;
+        if (originalProxy === undefined) delete process.env.PYROCK_PROXY;
+        else process.env.PYROCK_PROXY = originalProxy;
+        if (originalStickyBase === undefined) delete process.env.PYROCK_PROXY_STICKY_BASE;
+        else process.env.PYROCK_PROXY_STICKY_BASE = originalStickyBase;
     });
 
     await startServer({ host: '127.0.0.1', port: 0 });

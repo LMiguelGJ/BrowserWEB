@@ -11,8 +11,14 @@ test('live preview preserves REST controls through navigation, reconnect and res
     assert.match(source, /require\.main\s*===\s*module/, 'server must be importable without starting a browser');
     const path = require('node:path');
     const originalModule = process.env.PYROCK_CAMOUFOX_MODULE;
+    const originalProxy = process.env.PYROCK_PROXY;
+    const originalStickyBase = process.env.PYROCK_PROXY_STICKY_BASE;
     // The server under test runs on a real browser through the camoufox-js contract.
     process.env.PYROCK_CAMOUFOX_MODULE = path.join(__dirname, 'fixtures', 'playwright-chromium-camoufox.js');
+    // The local .env must not decide how this test reaches the network: a proxy
+    // would send the test server itself through a remote gateway.
+    process.env.PYROCK_PROXY = '';
+    process.env.PYROCK_PROXY_STICKY_BASE = '';
     const { WebSocket } = require('ws');
     const { chromium } = require('playwright-core');
     const { chromiumExecutable } = require('./helpers/chromium-binary');
@@ -28,6 +34,10 @@ test('live preview preserves REST controls through navigation, reconnect and res
         try { await require('./fixtures/playwright-chromium-camoufox').stop(); } catch { /* already gone */ }
         if (originalModule === undefined) delete process.env.PYROCK_CAMOUFOX_MODULE;
         else process.env.PYROCK_CAMOUFOX_MODULE = originalModule;
+        if (originalProxy === undefined) delete process.env.PYROCK_PROXY;
+        else process.env.PYROCK_PROXY = originalProxy;
+        if (originalStickyBase === undefined) delete process.env.PYROCK_PROXY_STICKY_BASE;
+        else process.env.PYROCK_PROXY_STICKY_BASE = originalStickyBase;
     });
     let submitted;
     app.get('/__test/submitted', (req, res) => {

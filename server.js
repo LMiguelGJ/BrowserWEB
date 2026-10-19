@@ -8,7 +8,7 @@ const WebSocket = require('ws');
 const { createScreencastController } = require('./screencast');
 const { createSessionManager } = require('./sessions');
 const { generateHumanPath, typeDelays } = require('./humanize');
-const { createCamoufoxEngine, diagnosePage, sectionProxy, parseProxyTemplate, stickyBase, buildProxyUrl } = require('./engines/camoufox');
+const { createCamoufoxEngine, diagnosePage, sectionProxy, parseProxyTemplate, stickyBase, buildProxyUrl, proxyPort } = require('./engines/camoufox');
 const PORT = process.env.PORT || 3000;
 // Camoufox (anti-detect Firefox via Playwright) is the only engine.
 // PYROCK_CAMOUFOX_MODULE is a test seam: it points the loader at a fixture module.
@@ -229,7 +229,7 @@ function apiError(res, error) {
 function routeSection(req) { return getSection(req.method === 'GET' ? req.query.session : req.body?.session); }
 app.get('/api/sessions', (_req, res) => res.json({ success: true, sessions: sessions.list(), default: sessions.getDefault()?.id || null, max: MAX_SESSIONS }));
 
-// Última IP medida por sección: id de sección -> { ip, at }
+// Última IP medida por sección: id de sección -> { ip, at, history: [{ ip, at }] }
 const measuredIps = new Map();
 
 // Cómo sale el navegador y qué IP usa cada sección. Con proxy rotativo la IP
@@ -247,12 +247,17 @@ function networkOverview() {
         sections: sessions.list().map(section => {
             const proxy = sectionProxy(section.id);
             const measurement = measuredIps.get(section.id) || null;
+            const history = measurement ? measurement.history : [];
             return {
                 id: section.id,
                 name: section.name,
                 proxy: proxy ? proxy.server : (template ? buildProxyUrl(template, template.port) : null),
+                port: proxy ? proxyPort(proxy.server) : (template && template.port ? Number(template.port) : null),
                 ip: measurement ? measurement.ip : null,
-                measuredAt: measurement ? measurement.at : null
+                measuredAt: measurement ? measurement.at : null,
+                // Cuántas IPs distintas se han visto: con proxy rotativo son varias
+                // por sección, y eso en sí mismo es información.
+                ipCount: new Set(history.map(entry => entry.ip)).size
             };
         })
     };
@@ -271,7 +276,15 @@ app.post('/api/network/measure', async (req, res) => {
                     section.page.evaluate(() => fetch('https://api.ipify.org/').then(response => response.text()).then(text => text.trim())),
                     new Promise((_, reject) => setTimeout(() => reject(new Error('la medición agotó el tiempo')), 15000))
                 ]);
-                if (ip) measuredIps.set(id, { ip, at: new Date().toISOString() });
+                if (ip) {
+                    const previous = measuredIps.get(id) || { history: [] };
+                    const at = new Date().toISOString();
+                    measuredIps.set(id, {
+                        ip,
+                        at,
+                        history: [...previous.history, { ip, at }].slice(-5)
+                    });
+                }
             } catch (error) {
                 log.warn(`No se pudo medir la IP de ${id}: ${error.message}`);
             }
