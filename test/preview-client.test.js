@@ -585,6 +585,15 @@ test('opening the log scrolls to the newest entry and closing keeps every entry 
     assert.equal(h.el('scriptEditor').value, 'Sleep(100)');
 });
 
+test('monitor is clean: no program header row, normal cursor, full-width type field', () => {
+    const html = fs.readFileSync('public/index.html', 'utf8');
+    assert.doesNotMatch(html, /program-head|program-label|program-meta/, 'no PROGRAMA header row');
+    assert.doesNotMatch(stylesCss, /cursor:\s*crosshair/, 'preview keeps the normal cursor');
+    const field = ruleBody(stylesCss, '.text-input-container input');
+    assert.match(field, /flex:\s*1/, 'type field takes the full row');
+    assert.match(field, /height:\s*4\dpx/, 'type field is taller than the default input');
+});
+
 test('the URL input keeps its flexed width beside the Ir button', () => {
     const group = ruleBody(stylesCss, '.input-group .btn');
     assert.match(group, /width:\s*auto/, 'the Ir button does not claim the full row');

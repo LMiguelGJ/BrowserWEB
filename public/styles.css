@@ -377,25 +377,6 @@ body {
     min-height: 0;
 }
 
-.program-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 10px;
-}
-
-.program-label {
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-}
-
-.program-meta {
-    font-size: 13px;
-    color: var(--ink-mid);
-}
-
 .preview-container {
     position: relative;
     flex: 1;
@@ -413,7 +394,6 @@ body {
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
-    cursor: crosshair;
 }
 
 .loading {
@@ -597,7 +577,9 @@ input[type="number"] {
     width: 100%;
 }
 
-.text-input-container {
+.text-input-container input {
+    flex: 1;
+    height: 44px;
     margin-bottom: 8px;
 }
 
