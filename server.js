@@ -210,7 +210,7 @@ app.delete('/api/sessions/:id', async (req, res) => {
     try { await serializeMutation(() => sessions.close(req.params.id)); res.json({ success: true }); } catch (error) { apiError(res, error); }
 });
 app.get('/api/status', (req, res) => {
-    try { const section = routeSection(req); res.json({ success: true, browser: browser ? 'connected' : 'disconnected', browserReady: !!section.page && section.state === 'ready', lastAction, timestamp: new Date().toISOString() }); }
+    try { const section = routeSection(req); res.json({ success: true, browser: browser ? 'connected' : 'disconnected', engine: engine.name, browserReady: !!section.page && section.state === 'ready', lastAction, timestamp: new Date().toISOString() }); }
     catch (error) { apiError(res, error); }
 });
 app.post('/api/navigate', async (req, res) => {
