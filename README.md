@@ -165,7 +165,7 @@ Hay **un proceso Chromium compartido** y varias secciones independientes, cada u
 - `CAMOUFOX_HEADLESS` - Modo del navegador: `true` (default), `false` o `virtual` (Xvfb, el que usa la imagen Docker)
 - `CAMOUFOX_OS` - Sistema operativo simulado en la huella (default: el del host)
 - `CAMOUFOX_LOCALE` - Locale de la huella (default: `es-ES`)
-- `PYROCK_PROXY` - Proxy para el navegador, por ejemplo `http://usuario:clave@host:puerto` o `socks5://host:puerto`. Hace que la IP de salida parezca la de una persona en vez de la de un centro de datos, que es lo que más pesa en la detección de bots.
+- `PYROCK_PROXY` - Proxy para el navegador, por ejemplo `http://usuario:clave@host:puerto`. Hace que la IP de salida parezca la de una persona en vez de la de un centro de datos, que es lo que más pesa en la detección de bots. Las credenciales van en la URL completa. Ojo: Playwright sobre Chromium no admite autenticación SOCKS5, así que para Chromium usá `http://`; el motor de PyRock (Camoufox/Firefox) acepta ambos.
 - `PYROCK_GEOIP` - Con `1`, la geolocalización de la huella (latitud, longitud, zona horaria) se calcula a partir de la IP del proxy, para que no se contradiga. `camoufox-js` avisa cuando se usa un proxy sin esto.
 
 ### Motor: Camoufox
