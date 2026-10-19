@@ -125,6 +125,7 @@ function wrapPage(page, options = {}) {
         raw: page,
         mouse: page.mouse,
         keyboard: page.keyboard,
+        evaluate: (fn, arg) => page.evaluate(fn, arg),
         // Camoufox owns the window size and the fingerprint: PyRock must not
         // pin a viewport, set a user agent or send Chrome-style headers.
         async setViewport() {},
@@ -171,8 +172,9 @@ async function resolveCamoufox(loader) {
 // explained instead of guessed: a page stuck in "loading" never ran its app,
 // while a "complete" page with no text is a different failure.
 async function diagnosePage(page) {
+    const pending = (typeof page.pendingRequests === 'function' ? page.pendingRequests() : []).slice(0, 8);
     try {
-        return await page.evaluate(() => {
+        const state = await page.evaluate(() => {
             const text = (document.body?.innerText || '').replace(/\s+/g, ' ').trim();
             return {
                 readyState: document.readyState,
@@ -181,8 +183,9 @@ async function diagnosePage(page) {
                 spinnerish: document.querySelectorAll('[class*="spinner"],[class*="loading"],[class*="Loader"],[role="progressbar"]').length
             };
         });
+        return { ...state, pending };
     } catch (error) {
-        return { error: error.message.split('\n')[0] };
+        return { error: error.message.split('\n')[0], pending };
     }
 }
 
@@ -231,6 +234,14 @@ function createCamoufoxEngine({ loader = () => import('camoufox-js'), launchOpti
                     });
                 }
                 const page = wrapPage(raw);
+                // Requests still in flight are the smoking gun when a page never
+                // finishes loading: a challenge script that never resolves holds
+                // the app's bootstrap hostage.
+                const inFlight = new Set();
+                raw.on('request', request => inFlight.add(request));
+                raw.on('requestfinished', request => inFlight.delete(request));
+                raw.on('requestfailed', request => inFlight.delete(request));
+                page.pendingRequests = () => [...inFlight].map(request => request.url());
                 return { context, page };
             } catch (error) {
                 try { await context.close(); } catch { /* the original failure is the useful one */ }

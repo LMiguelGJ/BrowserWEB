@@ -252,3 +252,11 @@ test('the geolocation can be derived from the proxy IP so the fingerprint matche
         else process.env.PYROCK_PROXY = originalProxy;
     }
 });
+
+test('the diagnosis names the requests that never finished, the usual cause of a blank page', async () => {
+    const { diagnosePage } = require('../engines/camoufox');
+    const page = fakePlaywrightPage();
+    page.pendingRequests = () => ['https://cdn.example/challenge.js'];
+    const diagnosis = await diagnosePage(page);
+    assert.deepEqual(diagnosis.pending, ['https://cdn.example/challenge.js']);
+});

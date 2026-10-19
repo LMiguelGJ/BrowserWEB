@@ -107,7 +107,7 @@ async function navigateToUrl(url, section, retryCount = 0) {
         }
         // A preview can be blank while the request "succeeded"; report what the page
         // actually did so the cause is in the log, not in a guess.
-        const diagnosis = await diagnosePage(section.page.raw);
+        const diagnosis = await diagnosePage(section.page);
         log.info('Estado de la página:', JSON.stringify(diagnosis));
         return { success: true, message: 'Navegación exitosa', status: response?.status() };
     } catch (error) {
