@@ -35,6 +35,7 @@ PyRock/
 │   ├── PyRockScriptParser.js   # Parser de scripts
 │   └── config.js               # URL del servidor y consulta de estado
 ├── server.js                   # Servidor Express y WebSocket en el mismo puerto
+├── sessions.js                 # Secciones y contextos aislados del navegador
 ├── screencast.js               # Ciclo de vida CDP y control de flujo del preview
 ├── test/                       # Pruebas unitarias y de integración local
 ├── package.json                # Configuración de dependencias
@@ -112,7 +113,13 @@ PyRock/
    - El visor conserva la imagen anterior al perder la conexión y muestra su estado de reconexión.
    - El botón de captura manual sigue solicitando una imagen nueva por REST.
 
-5. **Registro y scripts (paneles laterales)**
+5. **Secciones de navegador**
+   - Usa la barra izquierda para agregar secciones, cambiar entre ellas y cerrar una sección con confirmación. Siempre debe quedar al menos una sección abierta.
+   - Cada sección tiene su propia página y cookies; los controles, el preview y el reinicio actúan sobre la sección seleccionada. Un script continúa en la sección donde empezó aunque cambies la selección.
+   - Los nombres opcionales tienen entre 1 y 24 caracteres; el nombre inicial es `Sección N`. La selección activa se recuerda en este navegador web, pero las secciones viven solo en memoria del servidor y se pierden al reiniciarlo.
+   - Todas las secciones comparten un único proceso Chromium, así que comparten su CPU, memoria y dirección IP de red. El máximo predeterminado es 5 secciones; se configura con `MAX_SESSIONS` (valores aceptados: 1–10).
+
+6. **Registro y scripts (paneles laterales)**
    - Las pestañas 📋 y 📜 del borde derecho abren, deslizándose, el registro de actividad y el control de scripts.
    - El panel se superpone: no mueve la vista previa ni los controles, así que los clics siguen mapeados igual.
    - Se cierra con ✕, con Escape o volviendo a pulsar su pestaña. Abrir una pestaña cierra la otra.
@@ -132,11 +139,14 @@ Todos los controles conservan su API HTTP:
 | `POST /api/screenshot` | Crear una captura manual |
 | `GET /api/screenshot` | Obtener la última captura manual guardada, no una imagen nueva |
 | `GET /api/status` | Consultar el estado |
-| `POST /api/init` | Reinicializar el navegador |
+| `GET /api/sessions` | Listar secciones e indicar `default` y `max` |
+| `POST /api/sessions` | Crear una sección; acepta `{ "name": "Cuenta" }` opcional |
+| `DELETE /api/sessions/:id` | Cerrar una sección (no se puede cerrar la última) |
+| `POST /api/init` | Reiniciar la sección activa o, si se omite `session`, todas las secciones |
 
-El preview usa `/ws/preview` en el mismo puerto que HTTP: `ws://localhost:3000/ws/preview` en local y `wss://<dominio>/ws/preview` con HTTPS. El cliente deriva esta URL de `serverUrl`. No se expone el endpoint CDP de Chrome.
+Las rutas de control existentes aceptan `session` en el cuerpo JSON de las solicitudes POST o en la query de las GET. Si se omite, el servidor usa la sección predeterminada. Por ejemplo, `POST /api/navigate` con `{ "url": "https://example.com", "session": "s2" }` dirige la navegación a `s2`. El preview usa `/ws/preview?session=s2` para mostrar una sección concreta; sin `session`, muestra la predeterminada. El WebSocket usa el mismo puerto que HTTP: `ws://localhost:3000/ws/preview` en local y `wss://<dominio>/ws/preview` con HTTPS. El cliente deriva esta URL de `serverUrl`. No se expone el endpoint CDP de Chrome.
 
-Hay **un navegador y una página compartidos**, no sesiones independientes. Varios visores pueden observarlos; cerrar un visor no cierra el navegador. Cada visor confirma el renderizado y recibe el fotograma más reciente disponible, sin acumular una cola de imágenes. No hay capturas automáticas por REST como respaldo: si falla el streaming, la captura manual permanece disponible.
+Hay **un proceso Chromium compartido** y varias secciones independientes, cada una con su propio `BrowserContext` y página. Las cookies, el almacenamiento web y la caché están aislados entre secciones; CPU, memoria y dirección IP de red son compartidas. Las secciones se mantienen en memoria del servidor, no persisten tras reiniciarlo, y su cantidad máxima se controla con `MAX_SESSIONS` (predeterminado: 5; rango admitido: 1–10). Varios visores pueden observar una sección; cerrar un visor no cierra la sección ni el navegador. Cada visor confirma el renderizado y recibe el fotograma más reciente disponible, sin acumular una cola de imágenes. No hay capturas automáticas por REST como respaldo: si falla el streaming, la captura manual permanece disponible.
 
 ### Proxy y diagnóstico del preview
 
@@ -151,6 +161,7 @@ Hay **un navegador y una página compartidos**, no sesiones independientes. Vari
 
 - `NODE_ENV` - Entorno de ejecución (production/development)
 - `PORT` - Puerto del servidor (default: 3000)
+- `MAX_SESSIONS` - Máximo de secciones de navegador (default: 5; valores válidos: 1–10; otros valores usan el default)
 
 ### Características Docker
 
