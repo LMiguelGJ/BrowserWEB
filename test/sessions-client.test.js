@@ -111,6 +111,10 @@ test('restart button handler restarts only active section', async () => {
   const h=createScriptHarness({sessions:[{id:'s1',name:'one'},{id:'s2',name:'two'}]});await h.load();
   h.elements.get('sessionList').children[1].children[0].dispatch('click');await h.api().initBrowser();assert.ok(h.operations.some(x=>x[0]==='restart'&&x[1]==='s2'));
 });
+test('the inline add-section input is not covered by the tally dot', () => {
+  const css=fs.readFileSync('public/styles.css','utf8');
+  assert.match(css,/#sessionList\s+li:has\(input\)::before\s*\{[^}]*display:\s*none/);
+});
 test('CSS reserves rail space and markup exposes accessible sidebar', () => {
   const html=fs.readFileSync('public/index.html','utf8'),css=fs.readFileSync('public/styles.css','utf8');
   assert.match(html,/<nav class="session-rail" aria-label="Secciones">/);

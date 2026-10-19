@@ -258,6 +258,10 @@ body {
     z-index: 1;
 }
 
+#sessionList li:has(input)::before {
+    display: none;
+}
+
 #sessionList li.active {
     border-color: var(--tally-red);
 }
@@ -404,20 +408,6 @@ body {
     justify-content: center;
     min-height: 0;
 }
-
-.corner {
-    position: absolute;
-    width: 22px;
-    height: 22px;
-    border: 0 solid var(--ink-low);
-    z-index: 2;
-    pointer-events: none;
-}
-
-.corner.c1 { top: 10px; left: 10px; border-top-width: 2px; border-left-width: 2px; }
-.corner.c2 { top: 10px; right: 10px; border-top-width: 2px; border-right-width: 2px; }
-.corner.c3 { bottom: 10px; left: 10px; border-bottom-width: 2px; border-left-width: 2px; }
-.corner.c4 { bottom: 10px; right: 10px; border-bottom-width: 2px; border-right-width: 2px; }
 
 #preview {
     max-width: 100%;
@@ -575,6 +565,14 @@ input[type="number"] {
 
 .input-group input {
     flex: 1;
+    min-width: 0;
+}
+
+/* Dentro de una fila flex, el botón conserva su ancho propio: sin esta regla
+   el width: 100% heredado del rack colapsa el input de URL. */
+.input-group .btn {
+    width: auto;
+    flex: 0 0 auto;
 }
 
 .coordinates {
@@ -595,7 +593,7 @@ input[type="number"] {
     width: 100%;
 }
 
-.control-group .btn {
+.control-group > .btn {
     width: 100%;
 }
 

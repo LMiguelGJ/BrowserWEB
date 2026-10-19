@@ -585,6 +585,18 @@ test('opening the log scrolls to the newest entry and closing keeps every entry 
     assert.equal(h.el('scriptEditor').value, 'Sleep(100)');
 });
 
+test('the URL input keeps its flexed width beside the Ir button', () => {
+    const group = ruleBody(stylesCss, '.input-group .btn');
+    assert.match(group, /width:\s*auto/, 'the Ir button does not claim the full row');
+    const input = ruleBody(stylesCss, '.input-group input');
+    assert.match(input, /flex:\s*1/);
+    assert.match(input, /min-width:\s*0/);
+    // The rack's full-width button rule must target direct children only, or it
+    // outranks (by file order) the input-group override and collapses the input.
+    assert.match(stylesCss, /\.control-group\s*>\s*\.btn\s*\{/, 'full-width buttons are direct children only');
+    assert.doesNotMatch(stylesCss, /\.control-group\s+\.btn\s*\{/, 'no descendant full-width button rule');
+});
+
 test('responsive breakpoints: rack reflows under 1100px and the rail collapses under 760px', () => {
     const rackBlock = /@media \(max-width: 1100px\)\s*\{([^@]*?)\n\}/.exec(stylesCss);
     assert.ok(rackBlock, 'a max-width: 1100px media query exists');

@@ -112,7 +112,7 @@ Mundo visual: **master control de broadcast**. El panel es una consola de conmut
 ## Layout
 
 - Grid de consola: barra superior fija (56–60px), riel de fuentes a la izquierda (280px), monitor de programa al centro, rack de controles a la derecha (340px), deck de conmutación abajo.
-- La preview es dueña absoluta del alto disponible: ningún módulo le roba viewport.
+- La preview es dueña absoluta del alto disponible: ningún módulo le roba viewport. Sin esquinas de safe-area: el usuario las rechazó.
 - Responsive: bajo 1100px el rack pasa abajo del monitor; bajo 760px el riel de fuentes colapsa a fila horizontal.
 
 ## Elevation & Depth
@@ -123,12 +123,12 @@ Mundo visual: **master control de broadcast**. El panel es una consola de conmut
 ## Shapes
 
 - Radios bajos (6–10px): equipamiento, no juguete.
-- Esquinas de safe-area dibujadas dentro del monitor como marcas de encuadre.
+- Sin marcas de esquina ni ornamentos dentro del monitor: el usuario las rechazó explícitamente; el marco limpio es parte del mundo.
 
 ## Components
 
 - **Fuente (source row):** fila de rack con tally, nombre completo, uptime en mono; la activa lleva tally encendido y borde `tally-red`.
-- **Monitor de programa:** fondo `console-deep`, esquinas de safe-area, etiqueta `PROGRAMA · <sección>` arriba, estado de carga/error centrado.
+- **Monitor de programa:** fondo `console-deep`, etiqueta `PROGRAMA · <sección>` arriba, estado de carga/error centrado, sin marcas de esquina (preferencia explícita del usuario).
 - **Botones:** altura 38px, `console-raised`, borde `console-line`; primario `action-blue`; destructivo `danger-red`; teclas modificadoras en ámbar.
 - **Deck:** bus de estado `PVW→PGM` + pestañas de paneles (log/scripts) como llaves de router.
 
