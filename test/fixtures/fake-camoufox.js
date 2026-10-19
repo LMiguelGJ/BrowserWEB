@@ -40,8 +40,16 @@ function makePage(context, label = 'shot', url = 'https://example.test/') {
     page.closed = false;
     page.label = label;
     page.url = () => url;
-    page.url = () => url;
     page.isClosed = () => page.closed;
+    // The fake answers a document inspection (the engine's diagnosePage) and a
+    // window measurement, like the browser would.
+    page.evaluate = async fn => {
+        const source = String(fn);
+        if (source.includes('readyState')) {
+            return { readyState: 'complete', title: 'Página', textLength: 42, spinnerish: 0 };
+        }
+        return { width: 1280, height: 720 };
+    };
     page.goto = async (url) => {
         page.calls.push(['navigate', url]);
         return { status: () => 200, statusText: () => 'OK' };

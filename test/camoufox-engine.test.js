@@ -312,3 +312,23 @@ test('only a tab of the same site is followed: an ad popup must not take over th
     await new Promise(resolve => setTimeout(resolve, 300));
     assert.equal(adopted.length, 1, 'a tab of the same site is followed');
 });
+
+test('the engine reports which preview path it took: screencast or polling', async () => {
+    const withScreencast = fakePlaywrightPage({ withScreencast: true });
+    const session = await wrapPage(withScreencast).createCDPSession();
+    await session.send('Page.startScreencast', {});
+    assert.equal(session.previewMode(), 'screencast');
+    const withoutScreencast = fakePlaywrightPage({ withScreencast: false });
+    const polling = await wrapPage(withoutScreencast, {
+        timers: { setInterval: () => ({ unref() {} }), clearInterval: () => {} }
+    }).createCDPSession();
+    await polling.send('Page.startScreencast', {});
+    assert.equal(polling.previewMode(), 'poll');
+});
+
+test('the page exposes its current url, so the panel can show where the section really is', () => {
+    const page = fakePlaywrightPage();
+    page.url = () => 'https://browser.lol/es/viewer';
+    const wrapped = wrapPage(page);
+    assert.equal(wrapped.currentUrl(), 'https://browser.lol/es/viewer');
+});

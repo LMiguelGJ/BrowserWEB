@@ -14,7 +14,13 @@ function createSessionManager({ openPage, closeContext, createController, maxSes
         queue = result.catch(() => {});
         return result;
     };
-    const publicSession = section => ({ id: section.id, name: section.name, url: section.page?.url?.() || '', state: section.state });
+    const publicSession = section => ({
+        id: section.id,
+        name: section.name,
+        url: section.page?.url?.() || section.page?.currentUrl?.() || '',
+        previewMode: section.page?.previewMode?.() || null,
+        state: section.state
+    });
     const get = id => sessions.get(id) || null;
     const defaultSection = () => sessions.values().next().value || null;
     async function dispose(section, { closeController = true } = {}) {

@@ -57,12 +57,16 @@ async function measurePage(page) {
     return null;
 }
 
-function createFrameSession(page, { timers = globalThis, fallbackIntervalMs = FALLBACK_POLL_MS } = {}) {
+function createFrameSession(page, { timers = globalThis, fallbackIntervalMs = FALLBACK_POLL_MS, logger = null } = {}) {
     const session = new EventEmitter();
     let nextSessionId = 0;
     let screencastActive = false;
     let pollTimer = null;
     let polling = false;
+    // Which path the preview took: 'screencast' (real frames) or 'poll'
+    // (screenshots every 200 ms). The operator needs to know: a polling preview
+    // is capped at ~5 fps and would otherwise look like a slow page.
+    let previewMode = null;
 
     const emitFrame = buffer => {
         session.emit('Page.screencastFrame', { data: Buffer.from(buffer).toString('base64'), sessionId: ++nextSessionId });
@@ -76,9 +80,13 @@ function createFrameSession(page, { timers = globalThis, fallbackIntervalMs = FA
         if (page.screencast && typeof page.screencast.start === 'function') {
             await page.screencast.start({ onFrame: async ({ data }) => emitFrame(data), size, quality });
             screencastActive = true;
+            previewMode = 'screencast';
+            logger?.info('Vista previa por screencast (frames nativos)');
             return;
         }
         // Older Playwright builds (or a Juggler without screencast): poll screenshots.
+        previewMode = 'poll';
+        logger?.info(`Vista previa por sondeo de capturas (cada ${fallbackIntervalMs} ms)`);
         pollTimer = timers.setInterval(async () => {
             if (polling) return;
             polling = true;
@@ -117,15 +125,21 @@ function createFrameSession(page, { timers = globalThis, fallbackIntervalMs = FA
         await stop();
         session.removeAllListeners();
     };
+    session.previewMode = () => previewMode;
     return session;
 }
 
 function wrapPage(page, options = {}) {
+    let frameSession = null;
     return {
         raw: page,
         mouse: page.mouse,
         keyboard: page.keyboard,
         evaluate: (fn, arg) => page.evaluate(fn, arg),
+        // Where the section really is: it changes when the site opens a new tab.
+        currentUrl: () => (typeof page.url === 'function' ? page.url() : ''),
+        // 'screencast' or 'poll': how the preview frames are produced.
+        previewMode: () => (frameSession ? frameSession.previewMode() : null),
         // Camoufox owns the window size and the fingerprint: PyRock must not
         // pin a viewport, set a user agent or send Chrome-style headers.
         async setViewport() {},
@@ -145,7 +159,10 @@ function wrapPage(page, options = {}) {
             return encoding === 'base64' ? Buffer.from(image).toString('base64') : image;
         },
         isClosed: () => page.isClosed(),
-        createCDPSession: async () => createFrameSession(page, options)
+        async createCDPSession() {
+            frameSession = createFrameSession(page, options);
+            return frameSession;
+        }
     };
 }
 
@@ -254,7 +271,7 @@ function createCamoufoxEngine({ loader = () => import('camoufox-js'), launchOpti
                         logger.warn(`petición fallida: ${request.url().slice(0, 120)} (${reason})`);
                     });
                 }
-                const page = wrapPage(raw);
+                const page = wrapPage(raw, { logger });
                 // Requests still in flight are the smoking gun when a page never
                 // finishes loading: a challenge script that never resolves holds
                 // the app's bootstrap hostage.

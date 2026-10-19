@@ -109,9 +109,29 @@ async function navigateToUrl(url, section, retryCount = 0) {
         }
         // A preview can be blank while the request "succeeded"; report what the page
         // actually did so the cause is in the log, not in a guess.
-        const diagnosis = await diagnosePage(section.page);
+        // "domcontentloaded" only means the HTML arrived: a single-page app can
+        // take minutes to hydrate, and reporting that as a success left the
+        // operator with a blank preview and no explanation.
+        const settleTimeout = Number(process.env.PYROCK_SETTLE_TIMEOUT_MS) >= 0
+            ? Number(process.env.PYROCK_SETTLE_TIMEOUT_MS)
+            : 20000;
+        const deadline = Date.now() + settleTimeout;
+        let diagnosis = await diagnosePage(section.page);
+        let settled = diagnosis.readyState === 'complete' && diagnosis.textLength > 0;
+        while (!settled && Date.now() < deadline) {
+            await sleep(500);
+            diagnosis = await diagnosePage(section.page);
+            settled = diagnosis.readyState === 'complete' && diagnosis.textLength > 0;
+        }
         log.info('Estado de la página:', JSON.stringify(diagnosis));
-        return { success: true, message: 'Navegación exitosa', status: response?.status(), diagnosis };
+        return {
+            success: true,
+            message: settled ? 'Navegación exitosa' : 'La página todavía no termina de cargar',
+            status: response?.status(),
+            diagnosis,
+            settled,
+            previewMode: section.page.previewMode?.() || null
+        };
     } catch (error) {
         const message = error.message;
         const retryable = ['Navigation timeout','net::ERR_CONNECTION_REFUSED','net::ERR_CONNECTION_RESET','net::ERR_NETWORK_CHANGED','Target closed'].some(item => message.includes(item));
