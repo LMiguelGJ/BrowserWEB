@@ -80,3 +80,25 @@ test('the list is not rebuilt when nothing changed, so a pending close confirmat
     await h.api().refreshSessions();
     assert.equal(list.children[0], firstChild, 'the same row survives a refresh that changes nothing');
 });
+
+test('the network panel shows the exit, the mode and one row per section', async () => {
+    const h = createScriptHarness({
+        network: {
+            configured: true, host: 'gw.example', port: '823', mode: 'sticky', stickyBase: 10000,
+            credentials: 'user:••••••••',
+            sections: [
+                { id: 's1', name: 'Sección 1', proxy: 'http://gw.example:10001', ip: '157.34.27.193', measuredAt: '2026-10-19T19:40:12.000Z' },
+                { id: 's2', name: 'Sección 2', proxy: 'http://gw.example:10002', ip: null, measuredAt: null }
+            ]
+        }
+    });
+    await h.load();
+    await h.api().renderNetwork();
+    const body = h.elements.get('netBody');
+    const text = body.children.map(child => child.children.map(inner => inner.textContent).join(' ')).join('\n');
+    assert.match(text, /gw\.example/, 'the proxy host is shown');
+    assert.match(text, /sticky/i, 'the mode is shown');
+    assert.match(text, /157\.34\.27\.193/, 'the measured IP is shown');
+    assert.match(text, /Sección 2/, 'every section has a row');
+    assert.doesNotMatch(text, /secret/i, 'the password is never rendered');
+});

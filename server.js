@@ -8,7 +8,7 @@ const WebSocket = require('ws');
 const { createScreencastController } = require('./screencast');
 const { createSessionManager } = require('./sessions');
 const { generateHumanPath, typeDelays } = require('./humanize');
-const { createCamoufoxEngine, diagnosePage } = require('./engines/camoufox');
+const { createCamoufoxEngine, diagnosePage, sectionProxy, parseProxyTemplate, stickyBase, buildProxyUrl } = require('./engines/camoufox');
 const PORT = process.env.PORT || 3000;
 // Camoufox (anti-detect Firefox via Playwright) is the only engine.
 // PYROCK_CAMOUFOX_MODULE is a test seam: it points the loader at a fixture module.
@@ -58,6 +58,7 @@ const sessions = createSessionManager({
     async openPage(section) {
         const activeBrowser = await ensureBrowser();
         const opened = await engine.openPage(activeBrowser, {
+            section,
             onPopup: popup => sessions.adopt(section, popup)
         });
         if (shuttingDown || browser !== activeBrowser) {
@@ -227,6 +228,57 @@ function apiError(res, error) {
 }
 function routeSection(req) { return getSection(req.method === 'GET' ? req.query.session : req.body?.session); }
 app.get('/api/sessions', (_req, res) => res.json({ success: true, sessions: sessions.list(), default: sessions.getDefault()?.id || null, max: MAX_SESSIONS }));
+
+// Última IP medida por sección: id de sección -> { ip, at }
+const measuredIps = new Map();
+
+// Cómo sale el navegador y qué IP usa cada sección. Con proxy rotativo la IP
+// cambia en cada petición: lo que se muestra es siempre una foto con su hora.
+function networkOverview() {
+    const template = parseProxyTemplate(process.env.PYROCK_PROXY);
+    const base = stickyBase();
+    return {
+        configured: !!template,
+        host: template ? template.host : null,
+        port: template ? template.port : null,
+        mode: base ? 'sticky' : template ? 'rotating' : 'none',
+        stickyBase: base,
+        credentials: template && template.username ? `${template.username}:${'•'.repeat(8)}` : null,
+        sections: sessions.list().map(section => {
+            const proxy = sectionProxy(section.id);
+            const measurement = measuredIps.get(section.id) || null;
+            return {
+                id: section.id,
+                name: section.name,
+                proxy: proxy ? proxy.server : (template ? buildProxyUrl(template, template.port) : null),
+                ip: measurement ? measurement.ip : null,
+                measuredAt: measurement ? measurement.at : null
+            };
+        })
+    };
+}
+app.get('/api/network', (_req, res) => res.json(networkOverview()));
+app.post('/api/network/measure', async (req, res) => {
+    try {
+        const wanted = req.body?.session ? [req.body.session] : sessions.list().map(section => section.id);
+        for (const id of wanted) {
+            const section = sessions.get(id);
+            if (!section?.page) continue;
+            try {
+                // La medición sale desde la página de la sección: usa su proxy y
+                // su contexto, así que es la IP que vería el sitio.
+                const ip = await Promise.race([
+                    section.page.evaluate(() => fetch('https://api.ipify.org/').then(response => response.text()).then(text => text.trim())),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('la medición agotó el tiempo')), 15000))
+                ]);
+                if (ip) measuredIps.set(id, { ip, at: new Date().toISOString() });
+            } catch (error) {
+                log.warn(`No se pudo medir la IP de ${id}: ${error.message}`);
+            }
+        }
+        res.json(networkOverview());
+    } catch (error) { apiError(res, error); }
+});
 app.post('/api/sessions', async (req, res) => {
     try {
         if (shuttingDown) throw Object.assign(new Error('Browser unavailable'), { status: 503 });

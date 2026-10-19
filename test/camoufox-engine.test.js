@@ -341,3 +341,52 @@ test('the browser is told to decode H.264 with the system ffmpeg and to use host
     assert.equal(prefs['media.ffmpeg.use-system-libavcodec'], true, 'H.264 needs the system libavcodec');
     assert.equal(prefs['media.ice.default_address_only'], true, 'mDNS candidates do not resolve inside a container');
 });
+
+test('each section gets its own sticky proxy port, so every section has a stable exit IP', async () => {
+    const original = process.env.PYROCK_PROXY;
+    const originalBase = process.env.PYROCK_PROXY_STICKY_BASE;
+    process.env.PYROCK_PROXY = 'http://user:pass@gw.example:823';
+    process.env.PYROCK_PROXY_STICKY_BASE = '10000';
+    try {
+        const contexts = [];
+        const browser = {
+            newContext: async options => { contexts.push(options); return { newPage: async () => fakePlaywrightPage(), close: async () => {} }; },
+            close: async () => {}
+        };
+        const engine = createCamoufoxEngine({ loader: async () => ({ Camoufox: async () => browser }) });
+        const launched = await engine.launch();
+        await engine.openPage(launched, { section: { id: 's1' } });
+        await engine.openPage(launched, { section: { id: 's2' } });
+        assert.equal(contexts.length, 2);
+        assert.deepEqual(contexts[0].proxy, { server: 'http://gw.example:10001', username: 'user', password: 'pass' });
+        assert.deepEqual(contexts[1].proxy, { server: 'http://gw.example:10002', username: 'user', password: 'pass' });
+    } finally {
+        if (original === undefined) delete process.env.PYROCK_PROXY;
+        else process.env.PYROCK_PROXY = original;
+        if (originalBase === undefined) delete process.env.PYROCK_PROXY_STICKY_BASE;
+        else process.env.PYROCK_PROXY_STICKY_BASE = originalBase;
+    }
+});
+
+test('without a sticky base every section shares the configured proxy as it is', async () => {
+    const original = process.env.PYROCK_PROXY;
+    const originalBase = process.env.PYROCK_PROXY_STICKY_BASE;
+    process.env.PYROCK_PROXY = 'http://user:pass@gw.example:823';
+    delete process.env.PYROCK_PROXY_STICKY_BASE;
+    try {
+        const contexts = [];
+        const browser = {
+            newContext: async options => { contexts.push(options); return { newPage: async () => fakePlaywrightPage(), close: async () => {} }; },
+            close: async () => {}
+        };
+        const engine = createCamoufoxEngine({ loader: async () => ({ Camoufox: async () => browser }) });
+        const launched = await engine.launch();
+        await engine.openPage(launched, { section: { id: 's1' } });
+        assert.ok(!contexts[0] || contexts[0].proxy === undefined, 'no per-context proxy when no sticky base is set');
+    } finally {
+        if (original === undefined) delete process.env.PYROCK_PROXY;
+        else process.env.PYROCK_PROXY = original;
+        if (originalBase === undefined) delete process.env.PYROCK_PROXY_STICKY_BASE;
+        else process.env.PYROCK_PROXY_STICKY_BASE = originalBase;
+    }
+});

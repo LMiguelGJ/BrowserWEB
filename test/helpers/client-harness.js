@@ -28,13 +28,13 @@ function createHarness(serverUrl = 'http://localhost:3000', fetchImpl) {
   return { client, requests, sockets, timers, timeouts:timers, intervals };
 }
 
-function createScriptHarness({ sessions = [{ id: 's1', name: 'One', url: 'https://one.test' }], defaultId, max, storedId = null, onExecute } = {}) {
-  const elements = new Map(), listeners = new Map(), local = new Map(storedId ? [['pyrock.activeSession', storedId]] : []), operations = [], timers = [], clicks = [], presses = [];
+function createScriptHarness({ sessions = [{ id: 's1', name: 'One', url: 'https://one.test' }], defaultId, max, storedId = null, onExecute, network } = {}) {
+  const elements = new Map(), listeners = new Map(), local = new Map(storedId ? [['pyrock.activeSession', storedId]] : []), operations = [], timers = [], clicks = [], presses = [], requests = [];
   let client, options;
   function element(tag = 'div') {
     const handlers = new Map(), attrs = new Map(), classes = new Set();
     return { tag, children: [], style: {}, dataset: {}, value: '', textContent: '', title: '', disabled: false, naturalWidth: 0, naturalHeight: 0, rect:{left:0,top:0,width:0,height:0}, clientLeft:0, clientTop:0, complete:false,
-      classList: { add: x => classes.add(x), remove: x => classes.delete(x), contains: x => classes.has(x), toggle(x, force) { const on = force === undefined ? !classes.has(x) : force; on ? classes.add(x) : classes.delete(x); return on; } },
+      classList: { add: x => classes.add(x), remove: x => classes.delete(x), contains: x => classes.has(x), toggle(x, force) { const on = force === undefined ? !classes.has(x) : force; if (on) classes.add(x); else classes.delete(x); return on; } },
       setAttribute(k,v) { attrs.set(k,String(v)); }, getAttribute(k) { return attrs.get(k) ?? null; },
       addEventListener(type, fn, opts={}) { handlers.set(type,[...(handlers.get(type)||[]),{fn,once:opts.once===true}]); }, removeEventListener(type,fn) { handlers.set(type,(handlers.get(type)||[]).filter(x=>x.fn!==fn)); }, listenerCount(type){return (handlers.get(type)||[]).length;},
       dispatch(type, extra={}) { for (const entry of [...(handlers.get(type)||[])]) { entry.fn({ type, target:this, ...extra }); if(entry.once)this.removeEventListener(type,entry.fn); } },
@@ -49,6 +49,7 @@ function createScriptHarness({ sessions = [{ id: 's1', name: 'One', url: 'https:
     addEventListener(type,fn){ listeners.set(type,[...(listeners.get(type)||[]),fn]); }, dispatch(type,event={}){for(const f of listeners.get(type)||[])f({type,...event});} };
   const windowListeners=new Map();
   const window={ PyRockConfig:{serverUrl:'http://localhost'}, addEventListener(type,fn){windowListeners.set(type,[...(windowListeners.get(type)||[]),fn]);}, async dispatch(type){for(const f of windowListeners.get(type)||[]) await f();} };
+  const networkResponse = path => (network && typeof network === 'function' ? network(path) : network) || {};
   class FakeClient {
     constructor(o){options=o;client=this;this.sessionId=o.sessionId;this.isConnected=false;}
     async connect(){this.isConnected=true;return true;} disconnect(){this.isConnected=false;}
@@ -60,6 +61,7 @@ function createScriptHarness({ sessions = [{ id: 's1', name: 'One', url: 'https:
     async initBrowser(){operations.push(['restart',this.sessionId]);}
     async click(x,y){clicks.push({x,y});operations.push(['click',this.sessionId,x,y]);}
     async pressKey(key){presses.push(key);operations.push(['key',this.sessionId,key]);}
+    async makeRequest(path){requests.push(path);return networkResponse(path);}
   }
   class FakeParser {
     constructor(pyRock, indicators){this.pyRock=pyRock;this.visualIndicators=indicators;this.commands=[];this.currentLine=0;}
@@ -68,7 +70,7 @@ function createScriptHarness({ sessions = [{ id: 's1', name: 'One', url: 'https:
   }
   const context={document,window,localStorage:{getItem:k=>local.get(k)||null,setItem:(k,v)=>local.set(k,v)},PyRockHTTP:FakeClient,PyRockScriptParser:FakeParser,console:{log(){},error(){}},Date,URL,
     setTimeout(fn,delay){const t={fn,delay,cancelled:false};timers.push(t);return t;},clearTimeout(t){if(t)t.cancelled=true;},setImmediate};
-  vm.runInNewContext(`${fs.readFileSync('public/script.js','utf8')}\nwindow.__testApi={refreshSessions,activateSession,addSessionInline,executeScript,initBrowser,showDiagnosis,showPreviewMode};`,context,{filename:'public/script.js'});
+  vm.runInNewContext(`${fs.readFileSync('public/script.js','utf8')}\nwindow.__testApi={refreshSessions,activateSession,addSessionInline,executeScript,initBrowser,showDiagnosis,showPreviewMode,renderNetwork};`,context,{filename:'public/script.js'});
   return {document,elements,window,context,operations,timers,local,clicks,presses, get client(){return client;},get options(){return options;}, async load(){await window.dispatch('load');return options;}, api:()=>window.__testApi};
 }
 module.exports={createHarness,createScriptHarness};

@@ -6,7 +6,7 @@ let scriptParser = null;
 let isScriptRunning = false;
 
 // Side panels (log and scripts): only one is open at a time.
-const PANEL_TABS = { logPanel: 'tabLog', scriptPanel: 'tabScripts' };
+const PANEL_TABS = { logPanel: 'tabLog', scriptPanel: 'tabScripts', netPanel: 'tabNet' };
 let openPanelId = null;
 
 // Elementos del DOM
@@ -85,6 +85,73 @@ function closePanel() {
 }
 
 // Opens a panel (closing the other one), or closes it when it is already open.
+// Muestra por dónde sale el navegador y qué IP está usando cada sección. Con proxy
+// rotativo la IP cambia por petición: lo que se muestra es una foto con su hora.
+async function renderNetwork() {
+    const body = document.getElementById('netBody');
+    if (!body) return;
+    let data;
+    try {
+        data = await pyrock.makeRequest('/api/network');
+    } catch (error) {
+        body.replaceChildren();
+        const failed = document.createElement('div');
+        failed.className = 'net-note';
+        failed.textContent = `No se pudo leer la información de red: ${error.message}`;
+        body.append(failed);
+        return;
+    }
+    const mode = data.mode === 'sticky' ? `sticky (puerto ${data.stickyBase}+, una IP fija por sección)`
+        : data.mode === 'rotating' ? 'rotativo (cambia en cada petición)'
+        : 'sin proxy: sale la IP del servidor';
+    const rows = [
+        ['PROXY', data.configured ? `${data.host}:${data.port}` : 'sin proxy'],
+        ['MODO', mode],
+        ['AUTENTICACIÓN', data.credentials || '—']
+    ];
+    body.replaceChildren();
+    for (const [label, value] of rows) {
+        const line = document.createElement('div');
+        line.className = 'net-row';
+        const key = document.createElement('span');
+        key.className = 'net-key';
+        key.textContent = label;
+        const text = document.createElement('span');
+        text.className = 'net-value';
+        text.textContent = value;
+        line.append(key, text);
+        body.append(line);
+    }
+    const heading = document.createElement('div');
+    heading.className = 'net-heading';
+    heading.textContent = 'SECCIONES';
+    body.append(heading);
+    for (const section of data.sections || []) {
+        const line = document.createElement('div');
+        line.className = 'net-row net-section';
+        const name = document.createElement('span');
+        name.className = 'net-name';
+        name.textContent = section.name;
+        const ip = document.createElement('span');
+        ip.className = 'net-value';
+        ip.textContent = section.ip ? `${section.ip} · ${new Date(section.measuredAt).toLocaleTimeString()}` : 'sin medir';
+        line.append(name, ip);
+        body.append(line);
+    }
+}
+
+async function measureNetwork() {
+    const button = document.getElementById('netMeasure');
+    if (button) { button.disabled = true; button.textContent = 'Midiendo…'; }
+    try {
+        await pyrock.makeRequest('/api/network/measure', 'POST', {});
+    } catch (error) {
+        addLog(`No se pudo medir la IP: ${error.message}`, 'error');
+    }
+    await renderNetwork();
+    if (button) { button.disabled = false; button.textContent = 'Medir ahora'; }
+}
+
 function togglePanel(panelId) {
     if (!PANEL_TABS[panelId]) return;
     if (openPanelId === panelId) {
@@ -98,6 +165,7 @@ function togglePanel(panelId) {
         logBadge.hidden = true;
         logContainer.scrollTop = logContainer.scrollHeight;
     }
+    if (panelId === 'netPanel') renderNetwork();
     document.getElementById(`${panelId}Close`).focus({ preventScroll: true });
 }
 
@@ -268,8 +336,11 @@ document.getElementById('keyTab').addEventListener('click', () => sendKey('Tab')
 document.getElementById('keyEscape').addEventListener('click', () => sendKey('Escape'));
 document.getElementById('tabLog').addEventListener('click', () => togglePanel('logPanel'));
 document.getElementById('tabScripts').addEventListener('click', () => togglePanel('scriptPanel'));
+document.getElementById('tabNet').addEventListener('click', () => togglePanel('netPanel'));
 document.getElementById('logPanelClose').addEventListener('click', closePanel);
 document.getElementById('scriptPanelClose').addEventListener('click', closePanel);
+document.getElementById('netPanelClose').addEventListener('click', closePanel);
+document.getElementById('netMeasure').addEventListener('click', measureNetwork);
 document.getElementById('loadScriptBtn').addEventListener('click', loadScriptFile);
 document.getElementById('executeBtn').addEventListener('click', executeScript);
 document.getElementById('stopBtn').addEventListener('click', stopScript);

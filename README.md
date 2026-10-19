@@ -170,11 +170,20 @@ Hay **un proceso Chromium compartido** y varias secciones independientes, cada u
 - `CAMOUFOX_LOCALE` - Locale de la huella (default: `es-ES`)
 - `PYROCK_PROXY` - Proxy para el navegador, por ejemplo `http://usuario:clave@host:puerto`. Hace que la IP de salida parezca la de una persona en vez de la de un centro de datos, que es lo que más pesa en la detección de bots. Las credenciales van en la URL completa. Ojo: Playwright sobre Chromium no admite autenticación SOCKS5, así que para Chromium usá `http://`; el motor de PyRock (Camoufox/Firefox) acepta ambos.
   - Para que el navegador mantenga la **misma IP** en todas las peticiones (cookies de sesión, WebSockets de video, streams), usá un **puerto sticky** del rango 10000-20000 en lugar del puerto rotativo: la IP queda ligada a ese puerto y no hay que tocar el usuario. Un puerto rotativo reparte cada petición por una IP distinta y eso rompe las sesiones.
+- `PYROCK_PROXY_STICKY_BASE` - Puerto base del rango sticky (10000-20000). Con esta variable cada sección usa su propio puerto (`base + número de sección`), y por lo tanto **su propia IP fija** durante ~30 minutos. La salida de las IP se ve en el tab **Red** del panel.
 - `PYROCK_GEOIP` - Con `1`, la geolocalización de la huella (latitud, longitud, zona horaria) se calcula a partir de la IP del proxy, para que no se contradiga. `camoufox-js` avisa cuando se usa un proxy sin esto.
 - `PYROCK_BLOCK_ADS` - Con `1`, se cortan las peticiones a redes de anuncios, consent y analítica. Una página que espera a uno de esos scripts puede quedarse en su pantalla de carga; algunos de ellos (un challenge de Cloudflare servido por una red de anuncios) incluso nunca resuelven. Está desactivado por defecto porque hay sitios que necesitan su script de consent para arrancar.
 - `PYROCK_SETTLE_TIMEOUT_MS` - Cuánto espera el servidor a que la página *se vea* (documento listo y con contenido) antes de responder. Default `20000`. Si se agota, la navegación responde con éxito pero `settled: false` y el estado real de la página, y el panel lo muestra.
 
-### El panel y las pestañas que abre la web
+### El tab "Red"
+
+El tab **Red** del deck dice por dónde sale el navegador y qué IP está usando cada sección:
+
+- **Proxy**: host y puerto configurados, con el modo a la vista (`rotativo` o `sticky`).
+- **Última medición**: la IP medida y a qué hora. Con proxy rotativo la IP cambia en cada petición: lo que se muestra es siempre una foto, no una identidad.
+- **Secciones**: una fila por sección con su última IP medida. El botón **Medir ahora** pide la IP desde la página de cada sección, así que es la que vería el sitio.
+
+Las credenciales nunca se muestran: solo el usuario.
 
 - La sección **sigue las pestañas que abre la web** (un link de sesión, por ejemplo): si son del mismo sitio, la sección pasa a previsualizar esa pestaña.
 - El campo de URL refleja dónde está realmente la sección, y el panel avisa cuando siguió otra pestaña. Lo que estás escribiendo nunca se pisa.

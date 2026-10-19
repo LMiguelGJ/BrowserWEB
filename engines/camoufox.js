@@ -173,6 +173,55 @@ function parseHeadless(value) {
     return true;
 }
 
+// The configured proxy, split into the parts a per-context proxy needs.
+function parseProxyTemplate(value) {
+    if (!value) return null;
+    try {
+        const url = new URL(value);
+        return {
+            scheme: url.protocol.replace(':', ''),
+            host: url.hostname,
+            port: url.port,
+            username: decodeURIComponent(url.username),
+            password: decodeURIComponent(url.password)
+        };
+    } catch {
+        return null;
+    }
+}
+
+// The port range DataImpulse binds to a single IP for ~30 minutes. A sticky
+// port needs no username markers, so nothing has to be percent-encoded on the
+// way to the gateway.
+function stickyBase() {
+    const value = Number(process.env.PYROCK_PROXY_STICKY_BASE);
+    return Number.isInteger(value) && value >= 10000 && value <= 20000 ? value : null;
+}
+
+function buildProxyUrl(template, port) {
+    const credentials = template.username
+        ? `${encodeURIComponent(template.username)}${template.password ? `:${encodeURIComponent(template.password)}` : ''}@`
+        : '';
+    return `${template.scheme}://${credentials}${template.host}:${port}`;
+}
+
+// Playwright wants the origin alone: credentials travel in their own fields.
+function proxyOrigin(template, port) {
+    return `${template.scheme}://${template.host}:${port}`;
+}
+
+// The proxy a section uses: its own sticky port, so every section keeps a
+// stable exit IP instead of getting a new one on every request.
+function sectionProxy(sectionId) {
+    const template = parseProxyTemplate(process.env.PYROCK_PROXY);
+    const base = stickyBase();
+    if (!template || !base) return null;
+    const index = Number(String(sectionId || '').replace(/\D/g, '')) || 0;
+    const port = base + index;
+    // Only the shape Playwright accepts: an unknown key here is rejected.
+    return { server: proxyOrigin(template, port), username: template.username, password: template.password };
+}
+
 function defaultOs() {
     return process.platform === 'win32' ? 'windows' : 'linux';
 }
@@ -256,7 +305,14 @@ function createCamoufoxEngine({ loader = () => import('camoufox-js'), launchOpti
             // instead of a datacenter one — the single factor that most bot
             // protection actually scores.
             const proxy = process.env.PYROCK_PROXY?.trim();
-            if (proxy) options.proxy = proxy;
+            if (proxy) {
+                // With sticky ports the launch traffic leaves through the base
+                // port, so the geolocation Camoufox derives matches the pool
+                // the sections use.
+                const template = parseProxyTemplate(proxy);
+                const base = stickyBase();
+                options.proxy = template && base ? buildProxyUrl(template, base) : proxy;
+            }
             // With a proxy, the geolocation spoofed in the fingerprint should match
             // the proxy's IP; camoufox-js warns when it does not.
             if (process.env.PYROCK_GEOIP === '1' || process.env.PYROCK_GEOIP === 'true') {
@@ -264,10 +320,13 @@ function createCamoufoxEngine({ loader = () => import('camoufox-js'), launchOpti
             }
             return Camoufox(options);
         },
-        async openPage(browser, { onPopup } = {}) {
+        async openPage(browser, { section, onPopup } = {}) {
             // No context options: Camoufox generates and owns the fingerprint,
             // and overriding its viewport or locale would break consistency.
-            const context = await browser.newContext();
+            // The only exception is the proxy, so each section can keep its own
+            // sticky exit IP.
+            const proxy = section ? sectionProxy(section.id) : null;
+            const context = await browser.newContext(proxy ? { proxy } : undefined);
             try {
                 const raw = await context.newPage();
                 if (logger) {
@@ -344,4 +403,4 @@ function createCamoufoxEngine({ loader = () => import('camoufox-js'), launchOpti
     };
 }
 
-module.exports = { createCamoufoxEngine, wrapPage, createFrameSession, measurePage, parseHeadless, diagnosePage };
+module.exports = { createCamoufoxEngine, wrapPage, createFrameSession, measurePage, parseHeadless, diagnosePage, sectionProxy, parseProxyTemplate, stickyBase };

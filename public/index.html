@@ -111,6 +111,12 @@
             <div class="deck-bus" id="deckBus">PVW → PGM</div>
             <span class="deck-mode" id="previewMode" title="Cómo llegan los fotogramas de la vista previa"></span>
             <div class="side-tabs">
+                <button type="button" class="side-tab" id="tabNet"
+                    aria-controls="netPanel" aria-expanded="false" aria-label="Red de salida"
+                    title="Red de salida: proxy e IP por sección">
+                    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c1.8 2 1.8 10 0 12M8 2c-1.8 2-1.8 10 0 12"/></svg>
+                    <span class="tab-text">Red</span>
+                </button>
                 <button type="button" class="side-tab" id="tabLog"
                     aria-controls="logPanel" aria-expanded="false" aria-label="Registro de actividad"
                     title="Registro de actividad">
@@ -136,6 +142,20 @@
             </div>
             <div class="log-container" id="logContainer">
                 <div class="log-entry info">Sistema iniciado - vista previa en vivo disponible al conectar</div>
+            </div>
+        </aside>
+
+        <aside class="side-panel" id="netPanel" aria-hidden="true" aria-labelledby="netPanelTitle">
+            <div class="side-panel-header">
+                <h3 id="netPanelTitle"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c1.8 2 1.8 10 0 12M8 2c-1.8 2-1.8 10 0 12"/></svg>Red de Salida</h3>
+                <button type="button" class="side-panel-close" id="netPanelClose"
+                    aria-label="Cerrar panel" title="Cerrar panel">
+                    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>
+                </button>
+            </div>
+            <div class="net-body" id="netBody"></div>
+            <div class="net-actions">
+                <button type="button" class="btn" id="netMeasure">Medir ahora</button>
             </div>
         </aside>
 

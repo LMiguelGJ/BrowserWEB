@@ -48,6 +48,7 @@ function makePage(context, label = 'shot', url = 'https://example.test/') {
         if (source.includes('readyState')) {
             return { readyState: 'complete', title: 'Página', textLength: 42, spinnerish: 0 };
         }
+        if (source.includes('ipify')) return '203.0.113.7';
         return { width: 1280, height: 720 };
     };
     page.goto = async (url) => {
