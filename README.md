@@ -162,6 +162,22 @@ Hay **un proceso Chromium compartido** y varias secciones independientes, cada u
 - `NODE_ENV` - Entorno de ejecución (production/development)
 - `PORT` - Puerto del servidor (default: 3000)
 - `MAX_SESSIONS` - Máximo de secciones de navegador (default: 5; valores válidos: 1–10; otros valores usan el default)
+- `ENGINE` - Motor del navegador: `chromium` (default) o `camoufox`
+- `CAMOUFOX_HEADLESS` - Solo con `ENGINE=camoufox`: `true` (default), `false` o `virtual` (Xvfb, recomendado en Docker)
+
+### Motor Camoufox (opcional)
+
+[Camoufox](https://github.com/daijro/camoufox) es un Firefox anti-detección que se controla con Playwright. Con `ENGINE=camoufox` cada sección sigue siendo un contexto aislado, pero el navegador enmascara su huella a nivel de código nativo y humaniza el cursor por sí mismo, así que PyRock **no** apila su propio humanizador de cursor ni inyecta parches de Chrome.
+
+- Imagen aparte: `docker build -f Dockerfile.camoufox -t pyrock-camoufox .` (Node 22 y Linux glibc; la imagen Alpine actual no puede ejecutar el binario de Firefox de Camoufox).
+- Dependencias opcionales: `camoufox-js` y `playwright-core` (>=1.59 <1.63) se instalan solo en esa imagen; la imagen Chromium no cambia.
+- El preview usa `page.screencast` (hasta 25 fps en Firefox) y, si no existe, capturas por sondeo.
+- **Estado:** probado con navegadores simulados (API, aislamiento por sección, preview, clic, tipeo). **No se ha probado contra el binario real de Camoufox**: validándolo en el servidor con `ENGINE=camoufox` antes de usarlo en producción. El comando `npx camoufox-js fetch` del Dockerfile tampoco está verificado.
+- Un motor nuevo no arregla la reputación de la IP: Cloudflare también puntúa la IP del servidor.
+
+### Entrada humanizada
+
+En el motor Chromium, `/api/click` camina el cursor por una trayectoria grabada de una persona real (cursory-js, 60 Hz, máximo 1,5 s) antes de hacer clic, y `/api/type` escribe con retardo variable por tecla. Envía `humanize: false` en el cuerpo para el comportamiento instantáneo anterior.
 
 ### Características Docker
 

@@ -1,0 +1,82 @@
+# PyRock on Camoufox (anti-detect Firefox). Opt-in image: the default Dockerfile keeps running Chromium.
+#
+# Build:  docker build -f Dockerfile.camoufox -t pyrock-camoufox .
+# Run:    docker run -p 3000:3000 pyrock-camoufox
+#
+# Why a separate image:
+#   - camoufox-js needs Node >= 22 (the Chromium image is node:18).
+#   - Camoufox ships a glibc Firefox build, so Alpine (musl) cannot run it.
+#   - The Firefox binary is ~1.3 GB; it is fetched at build time and baked in
+#     so the container starts without network access.
+#
+# Unverified in this repository's CI: the `fetch` subcommand below is the one
+# documented for camoufox-js; if the build fails at that step, check
+# `npx camoufox-js --help` for the current command name.
+FROM node:22-bookworm-slim
+
+# Runtime libraries for Firefox (same set HackerXp's Camoufox image uses).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        fonts-liberation \
+        libasound2 \
+        libatk-bridge2.0-0 \
+        libatk1.0-0 \
+        libatspi2.0-0 \
+        libcairo2 \
+        libcups2 \
+        libdbus-1-3 \
+        libexpat1 \
+        libfontconfig1 \
+        libgbm1 \
+        libglib2.0-0 \
+        libgtk-3-0 \
+        libnspr4 \
+        libnss3 \
+        libpango-1.0-0 \
+        libpangocairo-1.0-0 \
+        libx11-6 \
+        libx11-xcb1 \
+        libxcb1 \
+        libxcomposite1 \
+        libxcursor1 \
+        libxdamage1 \
+        libxext6 \
+        libxfixes3 \
+        libxi6 \
+        libxrandr2 \
+        libxrender1 \
+        libxss1 \
+        libxtst6 \
+        xauth \
+        xvfb \
+        xdg-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Non-root runtime user first, so the browser binary lands in ITS cache (HOME) and is visible at runtime.
+RUN groupadd --gid 1001 nodejs && useradd --uid 1001 --gid nodejs --create-home pyrock \
+    && chown pyrock:nodejs /app
+USER pyrock
+ENV HOME=/home/pyrock
+
+COPY --chown=pyrock:nodejs package.json ./
+# The Chromium download is not needed here; Camoufox and its Playwright peer are installed explicitly
+# (they are optional peers of PyRock, so the default image does not pull them).
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+RUN npm install --omit=dev --silent \
+    && npm install --no-save --omit=dev --silent camoufox-js@0.13.0 playwright-core@1.62.1
+
+# Pre-download the patched Firefox binary at build time (as the runtime user).
+RUN npx camoufox-js fetch
+
+COPY --chown=pyrock:nodejs . .
+
+ENV ENGINE=camoufox \
+    CAMOUFOX_HEADLESS=virtual \
+    NODE_ENV=production
+
+EXPOSE 3000
+
+CMD ["node", "server.js"]

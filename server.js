@@ -8,8 +8,14 @@ const WebSocket = require('ws');
 const { createScreencastController } = require('./screencast');
 const { createSessionManager } = require('./sessions');
 const { generateHumanPath, typeDelays } = require('./humanize');
+const { createCamoufoxEngine, selectEngine } = require('./engines/camoufox');
 const PORT = process.env.PORT || 3000;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+// ENGINE=camoufox runs sections on Camoufox (anti-detect Firefox via Playwright); Chromium stays the default.
+// PYROCK_CAMOUFOX_MODULE is a test seam: dynamic import() cannot be intercepted, so tests point it at a fake module.
+const camoufoxEngine = selectEngine(process.env) === 'camoufox'
+    ? createCamoufoxEngine({ loader: () => (process.env.PYROCK_CAMOUFOX_MODULE ? Promise.resolve(require(process.env.PYROCK_CAMOUFOX_MODULE)) : import('camoufox-js')) })
+    : null;
 const rawLimit = process.env.MAX_SESSIONS;
 const parsedLimit = rawLimit && /^\d+$/.test(rawLimit) ? Number(rawLimit) : NaN;
 const MAX_SESSIONS = Number.isInteger(parsedLimit) && parsedLimit >= 1 ? Math.min(parsedLimit, 10) : 5;
@@ -36,7 +42,7 @@ function serializeMutation(operation) {
 async function ensureBrowser() {
     if (shuttingDown) throw Object.assign(new Error('Server is shutting down'), { status: 503 });
     if (browser) return browser;
-    const launched = await puppeteer.launch(getBrowserConfig());
+    const launched = camoufoxEngine ? await camoufoxEngine.launch() : await puppeteer.launch(getBrowserConfig());
     if (shuttingDown) { await launched.close(); throw Object.assign(new Error('Server is shutting down'), { status: 503 }); }
     browser = launched;
     launched.once?.('disconnected', () => {
@@ -68,6 +74,14 @@ const sessions = createSessionManager({
     maxSessions: MAX_SESSIONS,
     async openPage() {
         const activeBrowser = await ensureBrowser();
+        if (camoufoxEngine) {
+            const opened = await camoufoxEngine.openPage(activeBrowser);
+            if (shuttingDown || browser !== activeBrowser) {
+                try { await camoufoxEngine.closeContext(opened.context); } catch (closeError) { shutdownCleanupError ||= closeError; }
+                throw Object.assign(new Error('Browser unavailable'), { status: 503 });
+            }
+            return opened;
+        }
         const context = await activeBrowser.createBrowserContext();
         try {
             if (shuttingDown) throw Object.assign(new Error('Server is shutting down'), { status: 503 });
@@ -146,9 +160,10 @@ const lastCursorBySection = new Map();
 
 async function clickAt(x, y, section, { humanize = true } = {}) {
     try {
-        if (humanize) {
+        if (humanize && !camoufoxEngine) {
             // Lección de Camoufox: un clic es un teletransporte detectable; una mano
             // camina hasta el punto con timing real (incluidas vacilaciones).
+            // Con Camoufox el propio navegador humaniza el cursor: no se apila un segundo humanizador.
             const from = lastCursorBySection.get(section.id) || null;
             const { steps, trailingDelayMs } = generateHumanPath(from, [x, y]);
             for (const step of steps) {

@@ -32,6 +32,14 @@
     "puppeteer": "^24.25.0",
     "ws": "^8.22.0"
   },
+  "peerDependencies": {
+    "camoufox-js": "^0.13.0",
+    "playwright-core": ">=1.59.0 <1.63.0"
+  },
+  "peerDependenciesMeta": {
+    "camoufox-js": { "optional": true },
+    "playwright-core": { "optional": true }
+  },
   "engines": {
     "node": ">=18.0.0"
   },
