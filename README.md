@@ -165,6 +165,7 @@ Hay **un proceso Chromium compartido** y varias secciones independientes, cada u
 - `CAMOUFOX_HEADLESS` - Modo del navegador: `true` (default), `false` o `virtual` (Xvfb, el que usa la imagen Docker)
 - `CAMOUFOX_OS` - Sistema operativo simulado en la huella (default: el del host)
 - `CAMOUFOX_LOCALE` - Locale de la huella (default: `es-ES`)
+- `PYROCK_PROXY` - Proxy para el navegador, por ejemplo `http://usuario:clave@host:puerto` o `socks5://host:puerto`. Hace que la IP de salida parezca la de una persona en vez de la de un centro de datos, que es lo que más pesa en la detección de bots.
 
 ### Motor: Camoufox
 
@@ -173,7 +174,7 @@ Hay **un proceso Chromium compartido** y varias secciones independientes, cada u
 - El preview usa `page.screencast` (hasta 25 fps en Firefox) y, si el build no lo expone, capturas por sondeo.
 - El frame se pide al tamaño CSS real de la página: el cliente mapea el clic sobre la imagen a coordenadas de página usando el tamaño en píxeles de la imagen, así que ambos tienen que coincidir exactamente.
 - **Estado:** el camino migrado (adaptador, puente de frames, aislamiento por sección, recuperación ante caída del navegador) está probado con un navegador real en los tests de integración. **El binario de Camoufox no se probó localmente**: la primera ejecución real es en el servidor. El comando `npx camoufox-js fetch` del Dockerfile tampoco está verificado.
-- Un motor nuevo no arregla la reputación de la IP: Cloudflare también puntúa la IP del servidor.
+- Un motor nuevo no arregla la reputación de la IP: Cloudflare también puntúa la IP del servidor. Para eso está `PYROCK_PROXY` (proxy residencial).
 
 ### Entrada humanizada
 

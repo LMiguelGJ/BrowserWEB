@@ -143,6 +143,33 @@ test('launch asks Camoufox for headless and leaves cursor humanization to PyRock
     assert.ok(received.locale, 'a locale is set for the fingerprint');
 });
 
+test('a residential proxy can be set, so the exit IP is not a datacenter one', async () => {
+    const original = process.env.PYROCK_PROXY;
+    process.env.PYROCK_PROXY = 'http://user:secret@residential.example:8080';
+    try {
+        let received = null;
+        const engine = createCamoufoxEngine({ loader: async () => ({ Camoufox: async options => { received = options; return { newContext: async () => ({}) }; } }) });
+        await engine.launch();
+        assert.equal(received.proxy, 'http://user:secret@residential.example:8080', 'the proxy reaches the browser launch');
+    } finally {
+        if (original === undefined) delete process.env.PYROCK_PROXY;
+        else process.env.PYROCK_PROXY = original;
+    }
+});
+
+test('no proxy is configured by default', async () => {
+    const original = process.env.PYROCK_PROXY;
+    delete process.env.PYROCK_PROXY;
+    try {
+        let received = null;
+        const engine = createCamoufoxEngine({ loader: async () => ({ Camoufox: async options => { received = options; return { newContext: async () => ({}) }; } }) });
+        await engine.launch();
+        assert.equal(received.proxy, undefined);
+    } finally {
+        if (original !== undefined) process.env.PYROCK_PROXY = original;
+    }
+});
+
 test('the loader accepts an ESM namespace and a CommonJS default export', async () => {
     const esm = createCamoufoxEngine({ loader: async () => ({ Camoufox: async () => ({ newContext: async () => ({}) }) }) });
     await esm.launch();

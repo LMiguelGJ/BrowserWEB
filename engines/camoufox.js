@@ -175,13 +175,19 @@ function createCamoufoxEngine({ loader = () => import('camoufox-js'), launchOpti
         humanizesCursor: false,
         async launch() {
             const Camoufox = await resolveCamoufox(loader);
-            return Camoufox({
+            const options = {
                 headless: parseHeadless(process.env.CAMOUFOX_HEADLESS),
                 humanize: false,
                 os: process.env.CAMOUFOX_OS || defaultOs(),
                 locale: process.env.CAMOUFOX_LOCALE || 'es-ES',
                 ...launchOptions
-            });
+            };
+            // A residential proxy makes the exit IP look like a person's connection
+            // instead of a datacenter one — the single factor that most bot
+            // protection actually scores.
+            const proxy = process.env.PYROCK_PROXY?.trim();
+            if (proxy) options.proxy = proxy;
+            return Camoufox(options);
         },
         async openPage(browser) {
             // No context options: Camoufox generates and owns the fingerprint,
