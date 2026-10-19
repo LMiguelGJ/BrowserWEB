@@ -189,6 +189,27 @@ async function diagnosePage(page) {
     }
 }
 
+// Ad, consent and analytics networks. A page that waits for one of these can
+// sit in its loader for a long time — and one of them (a Cloudflare challenge
+// script served by an ad network) may never resolve at all. Blocking them is
+// opt-in because some sites need their consent script to boot.
+const TRACKER_HOSTS = [
+    'doubleclick.net', 'googlesyndication.com', 'google-analytics.com', 'googletagmanager.com',
+    'amazon-adsystem.com', 'intergient.com', 'playwire.com', 'id5-sync.com',
+    'fundingchoicesmessages.google.com', 'crwdcntrl.net', 'stackadapt.com', 'liadm.com',
+    'scorecardresearch.com', 'taboola.com', 'outbrain.com', 'adsrvr.org', 'adnxs.com',
+    'yieldmo.com', 'onesignal.com', 'smartadserver.com', 'casalemedia.com'
+];
+
+function isTrackerRequest(url) {
+    try {
+        const { hostname } = new URL(url);
+        return TRACKER_HOSTS.some(host => hostname === host || hostname.endsWith(`.${host}`));
+    } catch {
+        return false;
+    }
+}
+
 function createCamoufoxEngine({ loader = () => import('camoufox-js'), launchOptions = {}, logger = null } = {}) {
     return {
         name: 'camoufox',
@@ -242,6 +263,19 @@ function createCamoufoxEngine({ loader = () => import('camoufox-js'), launchOpti
                 raw.on('requestfinished', request => inFlight.delete(request));
                 raw.on('requestfailed', request => inFlight.delete(request));
                 page.pendingRequests = () => [...inFlight].map(request => request.url());
+                // Ad and consent networks can hold a page in its loader; blocking
+                // them is opt-in (PYROCK_BLOCK_ADS=1) because some sites need
+                // their consent script to boot.
+                if (process.env.PYROCK_BLOCK_ADS === '1' || process.env.PYROCK_BLOCK_ADS === 'true') {
+                    await raw.route('**/*', route => {
+                        const request = route.request();
+                        if (isTrackerRequest(request.url())) {
+                            route.abort().catch(() => {});
+                            return;
+                        }
+                        route.continue().catch(() => {});
+                    });
+                }
                 return { context, page };
             } catch (error) {
                 try { await context.close(); } catch { /* the original failure is the useful one */ }

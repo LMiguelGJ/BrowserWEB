@@ -167,6 +167,7 @@ Hay **un proceso Chromium compartido** y varias secciones independientes, cada u
 - `CAMOUFOX_LOCALE` - Locale de la huella (default: `es-ES`)
 - `PYROCK_PROXY` - Proxy para el navegador, por ejemplo `http://usuario:clave@host:puerto`. Hace que la IP de salida parezca la de una persona en vez de la de un centro de datos, que es lo que más pesa en la detección de bots. Las credenciales van en la URL completa. Ojo: Playwright sobre Chromium no admite autenticación SOCKS5, así que para Chromium usá `http://`; el motor de PyRock (Camoufox/Firefox) acepta ambos.
 - `PYROCK_GEOIP` - Con `1`, la geolocalización de la huella (latitud, longitud, zona horaria) se calcula a partir de la IP del proxy, para que no se contradiga. `camoufox-js` avisa cuando se usa un proxy sin esto.
+- `PYROCK_BLOCK_ADS` - Con `1`, se cortan las peticiones a redes de anuncios, consent y analítica. Una página que espera a uno de esos scripts puede quedarse en su pantalla de carga; algunos de ellos (un challenge de Cloudflare servido por una red de anuncios) incluso nunca resuelven. Está desactivado por defecto porque hay sitios que necesitan su script de consent para arrancar.
 
 ### Motor: Camoufox
 

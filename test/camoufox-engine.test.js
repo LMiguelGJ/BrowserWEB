@@ -260,3 +260,32 @@ test('the diagnosis names the requests that never finished, the usual cause of a
     const diagnosis = await diagnosePage(page);
     assert.deepEqual(diagnosis.pending, ['https://cdn.example/challenge.js']);
 });
+
+test('ad and consent networks can be blocked, so a page waiting on one still loads', async () => {
+    const original = process.env.PYROCK_BLOCK_ADS;
+    process.env.PYROCK_BLOCK_ADS = '1';
+    try {
+        const routed = [];
+        const pages = [];
+        const browser = {
+            newContext: async () => ({
+                newPage: async () => { const p = fakePlaywrightPage(); p.route = async (pattern, handler) => { routed.push({ pattern, handler }); }; pages.push(p); return p; },
+                close: async () => {}
+            }),
+            close: async () => {}
+        };
+        const engine = createCamoufoxEngine({ loader: async () => ({ Camoufox: async () => browser }) });
+        await engine.openPage(await engine.launch());
+        assert.equal(routed.length, 1, 'the request filter is installed');
+        const blocked = [];
+        const continued = [];
+        const fakeRoute = (url) => ({ request: () => ({ url: () => url }), abort: async () => blocked.push(url), continue: async () => continued.push(url) });
+        await routed[0].handler(fakeRoute('https://securepubads.g.doubleclick.net/tag/js/gpt.js'));
+        await routed[0].handler(fakeRoute('https://browser.lol/es/create'));
+        assert.equal(blocked.length, 1, 'the ad network is blocked');
+        assert.equal(continued.length, 1, 'the page itself is not');
+    } finally {
+        if (original === undefined) delete process.env.PYROCK_BLOCK_ADS;
+        else process.env.PYROCK_BLOCK_ADS = original;
+    }
+});
