@@ -75,7 +75,7 @@ function fallbackSteps(fromX, fromY, toX, toY, rand) {
         steps.push({ x, y, delayMs: dispatchedMs === 0 ? 0 : delayMs });
         dispatchedMs += delayMs;
     }
-    return { steps, totalMs: Math.max(dispatchedMs, Math.round(distance)) };
+    return { steps, totalMs: Math.max(dispatchedMs, Math.round(distance)), trailingDelayMs: Math.max(0, Math.round(distance) - dispatchedMs) };
 }
 
 function generateHumanPath(from, to, { seed, allowFallback = true, engine = 'auto' } = {}) {
@@ -87,7 +87,7 @@ function generateHumanPath(from, to, { seed, allowFallback = true, engine = 'aut
     // reason).
     if (!Number.isFinite(fromX) || !Number.isFinite(fromY) ||
         !Number.isFinite(toX) || !Number.isFinite(toY)) {
-        return { steps: [], totalMs: 0 };
+        return { steps: [], totalMs: 0, trailingDelayMs: 0 };
     }
 
     seed = seed === undefined ? Math.floor(Math.random() * 0xffffffff) : seed;
@@ -96,7 +96,7 @@ function generateHumanPath(from, to, { seed, allowFallback = true, engine = 'aut
 
     const cursoryLib = engine === 'fallback' ? null : loadCursory();
     if (!cursoryLib) {
-        if (!allowFallback) return { steps: [], totalMs: 0 };
+        if (!allowFallback) return { steps: [], totalMs: 0, trailingDelayMs: 0 };
         return fallbackSteps(Math.round(fromX), Math.round(fromY), destinationX, destinationY, seededRandom(seed));
     }
 
@@ -137,7 +137,9 @@ function generateHumanPath(from, to, { seed, allowFallback = true, engine = 'aut
     }
 
     const totalMs = Math.round(recordedMs * scale);
-    return { steps, totalMs: totalMs || Math.max(0, dispatchedMs) };
+    // Camoufox's contract: the caller dispatches the destination itself, after only the time still
+    // owed once the walked steps have played out (never the whole movement a second time).
+    return { steps, totalMs, trailingDelayMs: Math.max(0, totalMs - dispatchedMs) };
 }
 
 function typeDelays(text, { humanize = true, seed } = {}) {

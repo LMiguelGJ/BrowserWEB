@@ -150,12 +150,12 @@ async function clickAt(x, y, section, { humanize = true } = {}) {
             // Lección de Camoufox: un clic es un teletransporte detectable; una mano
             // camina hasta el punto con timing real (incluidas vacilaciones).
             const from = lastCursorBySection.get(section.id) || null;
-            const { steps, totalMs } = generateHumanPath(from, [x, y]);
+            const { steps, trailingDelayMs } = generateHumanPath(from, [x, y]);
             for (const step of steps) {
                 if (step.delayMs > 0) await sleep(step.delayMs);
                 await section.page.mouse.move(step.x, step.y);
             }
-            if (totalMs > 0) await sleep(totalMs);
+            if (trailingDelayMs > 0) await sleep(trailingDelayMs);
         }
         await section.page.mouse.click(x, y);
         lastCursorBySection.set(section.id, [x, y]);
