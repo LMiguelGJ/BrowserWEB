@@ -19,6 +19,9 @@ T1 | S7 | motor: proxy por contexto con puerto sticky por sección + helpers de 
 T2 | S4,S6 | servidor: `GET /api/network` y `POST /api/network/measure` | done | `server.js`: `networkOverview()` y medición con `page.evaluate(fetch('https://api.ipify.org/'))` por sección, con timeout de 15 s.
 T3 | S3,S4 | cliente: tab "Red", panel y estilos | done | `public/index.html` (tab + panel), `public/script.js` (`renderNetwork`, `measureNetwork`, `PANEL_TABS`), `public/styles.css` (`.net-*`).
 T4 | S1-S7 | verificación y entrega | done | Suite 121/121; commit `8d5f432` pusheado.
+T5 | S1 | fix: el panel respondía 500 (función sin exportar) | done | `buildProxyUrl` no estaba exportada en el engine: la rama rotativa lo llamaba. Regresión propia `test/network-panel-rotating.test.js` (RED 500 → GREEN). Commit `c7762ec`.
+T6 | S4,S6 | medir al abrir el panel + cadena de servicios gratuitos | done | `IP_SERVICES` = ipify → ifconfig.me → icanhazip, medido desde la página de la sección; `openNetworkPanel()` mide las secciones sin IP. Suite 124/124. Commit `45ff31c`.
+T7 | S4 | no filtrar la contraseña de la proxy en la API | done | `section.proxy` ahora es `proxyLabel()` (esquema + host + puerto, sin userinfo). Regresión: la respuesta no contiene la contraseña.
 
 ## Log
 
@@ -27,3 +30,6 @@ L2. La IP estable por sección se resolvió con puertos sticky (10000-20000): el
 L3. La medición se hace desde la página de la sección, no desde el servidor: así usa el proxy y el contexto de esa sección. `api.ipify.org` envía cabeceras CORS, así que la lectura desde la página funciona (verificado).
 L4. Sin clasificación residencial/datacenter: se pidió no depender de servicios externos. El panel muestra solo IP, hora y modo.
 L5. Aplicado: `python3/make/g++` ya estaban en la imagen; en este trabajo no se tocó el Dockerfile. Pendiente del usuario: fijar `PYROCK_PROXY_STICKY_BASE` en el entorno del servidor para que las secciones tengan IP fija.
+L6. Diagnóstico con evidencia del servidor desplegado (`/api/network` con `curl -sk`): `stickyBase: null` → modo rotativo → todas las secciones usan el puerto 823 compartido. La medición desde la página de cada sección ya devuelve IPs distintas (105.113.69.148 y 172.59.183.140), pero son fotos, no identidades: la IP fija por sección exige el puerto sticky por sección.
+L7. Hallazgo de seguridad: `/api/network` devolvía la URL completa de la proxy, con la contraseña. La UI no la renderizaba, pero cualquier consumidor de la API podía leerla. Ahora la respuesta lleva solo esquema, host y puerto (`proxyLabel`), con regresión que falla si la contraseña aparece.
+L8. La UI ahora mide sola al abrir el panel (las secciones sin IP), con una cadena de servicios gratuitos (ipify → ifconfig.me → icanhazip) para que la caída de uno no deje los cuadros vacíos, y avisa en pantalla que el modo rotativo cambia la IP en cada petición y qué variable produce una IP fija por sección.
