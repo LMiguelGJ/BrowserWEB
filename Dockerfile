@@ -55,9 +55,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libavcodec59 \
         libavformat59 \
         libavutil57 \
-        libswresample3 \
+        libswresample4 \
         libswscale6 \
-        libpostproc57 \
+        libpostproc56 \
         python3 \
         make \
         g++ \
