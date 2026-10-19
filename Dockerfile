@@ -8,6 +8,10 @@
 #
 # El binario parcheado (~1.3 GB) se descarga en el build y queda horneado en la
 # imagen, para que el contenedor arranque sin red.
+#
+# Las librerías de ffmpeg NO son opcionales: Firefox decodifica H.264 con el
+# libavcodec DEL SISTEMA, y sin él un stream remoto (avc1) no se decodifica
+# nunca — el visor queda listo pero no pinta un frame y el preview se ve blanco.
 FROM node:22-bookworm-slim
 
 # Dependencias de sistema para el Firefox de Camoufox, más las herramientas de
@@ -48,6 +52,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         xauth \
         xvfb \
         xdg-utils \
+        libavcodec59 \
+        libavformat59 \
+        libavutil57 \
+        libswresample3 \
+        libswscale6 \
+        libpostproc57 \
         python3 \
         make \
         g++ \

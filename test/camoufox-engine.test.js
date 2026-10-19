@@ -332,3 +332,12 @@ test('the page exposes its current url, so the panel can show where the section 
     const wrapped = wrapPage(page);
     assert.equal(wrapped.currentUrl(), 'https://browser.lol/es/viewer');
 });
+
+test('the browser is told to decode H.264 with the system ffmpeg and to use host ICE addresses', async () => {
+    let received = null;
+    const engine = createCamoufoxEngine({ loader: async () => ({ Camoufox: async options => { received = options; return { newContext: async () => ({}) }; } }) });
+    await engine.launch();
+    const prefs = received.firefox_user_prefs || {};
+    assert.equal(prefs['media.ffmpeg.use-system-libavcodec'], true, 'H.264 needs the system libavcodec');
+    assert.equal(prefs['media.ice.default_address_only'], true, 'mDNS candidates do not resolve inside a container');
+});

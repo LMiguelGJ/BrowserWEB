@@ -240,6 +240,16 @@ function createCamoufoxEngine({ loader = () => import('camoufox-js'), launchOpti
                 humanize: false,
                 os: process.env.CAMOUFOX_OS || defaultOs(),
                 locale: process.env.CAMOUFOX_LOCALE || 'es-ES',
+                firefox_user_prefs: {
+                    // Firefox decodifica H.264 con el libavcodec DEL SISTEMA: sin
+                    // esas librerías en la imagen no puede pintar un stream avc1
+                    // (el visor de browser.lol dice "unsupported-codec" y se queda
+                    // en blanco aunque la página cargue).
+                    'media.ffmpeg.use-system-libavcodec': true,
+                    // En un contenedor los candidatos mDNS (.local) no se resuelven
+                    // y el ICE falla: hay que quedarse con las direcciones de host.
+                    'media.ice.default_address_only': true
+                },
                 ...launchOptions
             };
             // A residential proxy makes the exit IP look like a person's connection
