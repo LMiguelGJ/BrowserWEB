@@ -1,0 +1,31 @@
+# Rediseño visual PyRock — ODD execution
+
+Objective: execute the Impeccable redesign of the whole web UI (PRODUCT.md captured; direction via concept-seed round); baseline `eb63ceb621e6504996053227abe8f95cc01d30f3` on `main`.
+Delivery: work-unit commits on `main` once the user approves the direction; push after RDD gates; no PR. Runner: `npm test` (`node --test`) plus the Impeccable detector and visual smoke.
+
+## Specs
+
+S1. User request verbatim: "el diseño es horrible dabes  darle mas espacio a las secciones  y mas estilo creo que debe hacerlo con toda la web asi que usa la skill de impecable".
+S2. Confirmed product truth (PRODUCT.md): single expert operator, long desktop sessions, Spanish UI, total brand freedom, preview is the constant focus.
+S3. Section space: the sections sidebar must get substantially more room and presence (S1: "darle mas espacio a las secciones").
+S4. Whole-web restyle: every surface of `public/` (index.html, styles.css, script.js UI strings/classes) joins one committed visual world; no leftover Bootstrap-default palette.
+S5. Preserve all working behavior: section create/switch/close, preview, controls, scripts, logs, REST/WebSocket contracts, 74/74 tests.
+S6. Direction decision is the user's: presented via the Impeccable decision page; the user's pick (assigned, pick, challenger, canon, re-roll) binds the build.
+S7. DESIGN.md records the chosen world before the first build edit; direction contract in the artifact opening comment.
+
+## Tasks
+
+T1 | S6 | parent: run direction round (concept-seed assigned ikeda-datamatics + fused challengers), author HTML card sketches, serve decision page, collect user choice | in_progress | Payload and sketches pending; user choice binds S3/S4 direction.
+T2 | S7,S4,S5 | build the chosen world across public/ with DESIGN.md and direction contract; craft-floor loaded before edits | pending | After T1.
+T3 | S5,S3 | regression: npm test 74/74; Impeccable detector over changed targets; visual smoke desktop (1400/1920) | pending | After T2.
+T4 | S1-S7 | finish review (impeccable-finish-reviewer) + close: commits on main, push after gates | in_progress | Build committed-world done; smoke server stopped; finish reviewer `mvev9jeh-d-c1uj` running. Then apply material fixes, commit work units on main, push after RDD gates.
+
+## Log
+
+L1. User request verbatim: "el diseño es horrible dabes  darle mas espacio a las secciones  y mas estilo creo que debe hacerlo con toda la web asi que usa la skill de impecable" + screenshot of the current UI.
+L2. Impeccable setup: context.mjs ran (no PRODUCT.md, incumbent visual system, detector manual). Init interview answered: "Solo yo, escritorio"; "Horas en escritorio"; "Libertad total"; skill updated to v4.6.0 (applies next session). PRODUCT.md written.
+L3. Direction seed `7d0575702b61cd919f4b1dc794ff1d48` (mode operate): assigned index 6 of the grounded list = data-sublime field (ikeda-datamatics). Catalog challengers dealt: japanese-high-density-web, pop-culture-shelf-vertical-video-feed-surface, vernacular-ephemera-cassette-j-card, notation-diagram-systems-labanotation, rw-manual-acetate-tab-board, ikeda-datamatics (the assigned world's own card).
+L4. Weighing verdicts on audience identification + product clarity: japanese-high-density competitive (kept: hairline module border system); rw-manual-acetate-tab-board competitive (kept: stepped tab rail for sections, active tab extends); vertical-feed declined (kept/raise: preview owns the viewport); cassette-j-card declined (kept: precise monospace marginalia for timings); labanotation declined (kept/raise: state encoded by fill pattern, not color). Raises on assigned: stepped tab rail (rw-manual), fill-pattern states (labanotation), viewport-primacy preview (vertical feed).
+L5. Decision page served (key 06beb13b); user picked `model-pick` — world: master control de broadcast (cada sección una fuente con tally, preview monitor de programa, rack de controles, deck PVW→PGM). The assigned data-sublime direction was superseded by the user's explicit pick.
+L6. T2 build: self-hosted fonts downloaded (Barlow 400/500/600/700, JetBrains Mono variable woff2 in public/fonts/); DESIGN.md written at project root (token frontmatter + direction contract in index.html/styles.css opening comments); index.html rebuilt to master-control layout preserving every id/aria hook and behavior; styles.css fully rewritten (591→~800 lines, three-plane console, tally semantics, deck, panels, responsive 1100/760, reduced-motion); script.js: session-name full text, loading text without emoji, deckBus live label, all inline onclick removed and replaced by addEventListener wiring (CSP-friendly, lint-visible); dead script-level takeScreenshot removed (no caller in HTML/JS/tests — tests call the client method).
+L7. T3 verification: full suite 74/74 including real-Chromium integration; test updates pin the new markup/CSS with the same protective intent (aria hooks, focus return, closed-panel not focusable, z-index above indicator, responsive breakpoints); Impeccable detector reduced from 13 findings to 1 intentional (cramped-padding: full-bleed monitor, documented in DESIGN.md); contrast fixes (ink-low #8a9099, action-blue #2563eb), glows removed, img transparent placeholder; visual smoke at 1400/1920 confirmed the world holds with no overlaps; only console error is the known favicon 404; smoke server stopped (killed by port PID, not all node).
