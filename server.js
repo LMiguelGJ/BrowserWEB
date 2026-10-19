@@ -8,7 +8,7 @@ const WebSocket = require('ws');
 const { createScreencastController } = require('./screencast');
 const { createSessionManager } = require('./sessions');
 const { generateHumanPath, typeDelays } = require('./humanize');
-const { createCamoufoxEngine, diagnosePage, sectionProxy, parseProxyTemplate, stickyBase, buildProxyUrl, proxyPort } = require('./engines/camoufox');
+const { createCamoufoxEngine, diagnosePage, sectionProxy, parseProxyTemplate, stickyBase, buildProxyUrl, proxyPort, proxyLabel } = require('./engines/camoufox');
 const PORT = process.env.PORT || 3000;
 // Camoufox (anti-detect Firefox via Playwright) is the only engine.
 // PYROCK_CAMOUFOX_MODULE is a test seam: it points the loader at a fixture module.
@@ -232,27 +232,40 @@ app.get('/api/sessions', (_req, res) => res.json({ success: true, sessions: sess
 // Última IP medida por sección: id de sección -> { ip, at, history: [{ ip, at }] }
 const measuredIps = new Map();
 
+// Servicios gratuitos que devuelven la IP de quien pregunta. Se prueban en
+// orden: si uno no responde, el siguiente.
+const IP_SERVICES = ['https://api.ipify.org/', 'https://ifconfig.me/ip', 'https://icanhazip.com/'];
+
 // Cómo sale el navegador y qué IP usa cada sección. Con proxy rotativo la IP
 // cambia en cada petición: lo que se muestra es siempre una foto con su hora.
 function networkOverview() {
     const template = parseProxyTemplate(process.env.PYROCK_PROXY);
     const base = stickyBase();
+    let mode = 'none';
+    if (base) mode = 'sticky';
+    else if (template) mode = 'rotating';
+    // Sin credenciales: la contraseña de la proxy no sale en la API.
+    const shared = template ? buildProxyUrl(template, template.port) : null;
     return {
         configured: !!template,
         host: template ? template.host : null,
         port: template ? template.port : null,
-        mode: base ? 'sticky' : template ? 'rotating' : 'none',
+        mode,
         stickyBase: base,
         credentials: template && template.username ? `${template.username}:${'•'.repeat(8)}` : null,
         sections: sessions.list().map(section => {
             const proxy = sectionProxy(section.id);
             const measurement = measuredIps.get(section.id) || null;
             const history = measurement ? measurement.history : [];
+            const server = proxy ? proxy.server : shared;
+            let port = null;
+            if (proxy) port = proxyPort(proxy.server);
+            else if (template && template.port) port = Number(template.port);
             return {
                 id: section.id,
                 name: section.name,
-                proxy: proxy ? proxy.server : (template ? buildProxyUrl(template, template.port) : null),
-                port: proxy ? proxyPort(proxy.server) : (template && template.port ? Number(template.port) : null),
+                proxy: server ? proxyLabel(server) : null,
+                port,
                 ip: measurement ? measurement.ip : null,
                 measuredAt: measurement ? measurement.at : null,
                 // Cuántas IPs distintas se han visto: con proxy rotativo son varias
@@ -271,9 +284,20 @@ app.post('/api/network/measure', async (req, res) => {
             if (!section?.page) continue;
             try {
                 // La medición sale desde la página de la sección: usa su proxy y
-                // su contexto, así que es la IP que vería el sitio.
+                // su contexto, así que es la IP que vería el sitio. Si un
+                // servicio no responde, se prueba el siguiente.
                 const ip = await Promise.race([
-                    section.page.evaluate(() => fetch('https://api.ipify.org/').then(response => response.text()).then(text => text.trim())),
+                    section.page.evaluate(async (services) => {
+                        for (const service of services) {
+                            try {
+                                const response = await fetch(service, { cache: 'no-store' });
+                                if (!response.ok) continue;
+                                const text = (await response.text()).trim();
+                                if (/^[0-9a-f.:]{3,45}$/i.test(text)) return text;
+                            } catch { /* siguiente servicio */ }
+                        }
+                        return null;
+                    }, IP_SERVICES),
                     new Promise((_, reject) => setTimeout(() => reject(new Error('la medición agotó el tiempo')), 15000))
                 ]);
                 if (ip) {

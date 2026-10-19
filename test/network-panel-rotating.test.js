@@ -30,6 +30,10 @@ test('the panel answers with a rotating proxy and no sticky port', async () => {
         assert.ok(body.sections.length >= 1);
         assert.match(body.sections[0].proxy, /:823$/, 'every section goes out through the shared proxy');
         assert.equal(body.sections[0].port, 823, 'and the panel says which port that is');
+        // La contraseña de la proxy no puede aparecer en la respuesta: la
+        // respuesta se sirve a cualquiera que tenga la UI abierta.
+        assert.doesNotMatch(JSON.stringify(body), /secret/, 'the password never leaves in the API');
+        assert.doesNotMatch(body.sections[0].proxy, /@/, 'the section proxy has no credentials');
     } finally {
         await stopServer();
         for (const [key, value] of [['PYROCK_CAMOUFOX_MODULE', originalModule], ['PYROCK_PROXY', originalProxy], ['PYROCK_PROXY_STICKY_BASE', originalBase]]) {

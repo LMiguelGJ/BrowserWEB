@@ -104,3 +104,39 @@ test('the network panel shows the exit, the mode and one row per section', async
     assert.match(text, /3 IPs distintas/, 'the panel says when the exit is rotating');
     assert.doesNotMatch(text, /secret/i, 'the password is never rendered');
 });
+
+test('the network panel measures the sections with no IP and warns about a rotating exit', async () => {
+    const calls = [];
+    const answer = {
+        configured: true, host: 'gw.example', port: '823', mode: 'rotating', stickyBase: null,
+        credentials: 'user:••••••••',
+        sections: [{ id: 's1', name: 'Sección 1', proxy: 'http://gw.example:823', port: 823, ip: null, measuredAt: null }]
+    };
+    const h = createScriptHarness({
+        network: (path) => { calls.push(path); return answer; }
+    });
+    await h.load();
+    await h.api().openNetworkPanel();
+    assert.ok(calls.includes('/api/network/measure'), 'a section without an IP is measured on its own');
+    const body = h.elements.get('netBody');
+    // Un aviso es un div sin hijos: su texto está en el propio nodo.
+    const text = body.children.map(child => (child.children.length ? child.children.map(inner => inner.textContent).join(' ') : child.textContent)).join('\n');
+    assert.match(text, /Modo rotativo/, 'the panel explains that the IP changes on every request');
+    assert.match(text, /PYROCK_PROXY_STICKY_BASE/, 'and says how to get a fixed IP per section');
+});
+
+test('the network panel does not measure again when every section already has an IP', async () => {
+    const calls = [];
+    const h = createScriptHarness({
+        network: (path) => {
+            calls.push(path);
+            return {
+                configured: true, host: 'gw.example', port: '823', mode: 'sticky', stickyBase: 10000,
+                sections: [{ id: 's1', name: 'Sección 1', port: 10001, ip: '157.34.27.193', measuredAt: '2026-10-19T19:40:12.000Z' }]
+            };
+        }
+    });
+    await h.load();
+    await h.api().openNetworkPanel();
+    assert.ok(!calls.includes('/api/network/measure'), 'a known IP is not measured again');
+});

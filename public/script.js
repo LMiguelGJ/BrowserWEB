@@ -89,7 +89,7 @@ function closePanel() {
 // rotativo la IP cambia por petición: lo que se muestra es una foto con su hora.
 async function renderNetwork() {
     const body = document.getElementById('netBody');
-    if (!body) return;
+    if (!body) return null;
     let data;
     try {
         data = await pyrock.makeRequest('/api/network');
@@ -99,7 +99,7 @@ async function renderNetwork() {
         failed.className = 'net-note';
         failed.textContent = `No se pudo leer la información de red: ${error.message}`;
         body.append(failed);
-        return;
+        return null;
     }
     const mode = data.mode === 'sticky' ? `sticky (puerto ${data.stickyBase}+, una IP fija por sección)`
         : data.mode === 'rotating' ? 'rotativo (cambia en cada petición)'
@@ -126,6 +126,14 @@ async function renderNetwork() {
     heading.className = 'net-heading';
     heading.textContent = 'SECCIONES';
     body.append(heading);
+    if (data.mode === 'rotating') {
+        // Con proxy rotativo la IP de cada sección es una foto, no una
+        // identidad: se dice en pantalla para que nadie la tome por fija.
+        const note = document.createElement('div');
+        note.className = 'net-note';
+        note.textContent = 'Modo rotativo: cada petición sale por una IP distinta. Para una IP fija por sección, define PYROCK_PROXY_STICKY_BASE (puertos 10000-20000).';
+        body.append(note);
+    }
     for (const section of data.sections || []) {
         const line = document.createElement('div');
         line.className = 'net-row net-section';
@@ -143,6 +151,7 @@ async function renderNetwork() {
         line.append(name, ip);
         body.append(line);
     }
+    return data;
 }
 
 async function measureNetwork() {
@@ -155,6 +164,13 @@ async function measureNetwork() {
     }
     await renderNetwork();
     if (button) { button.disabled = false; button.textContent = 'Medir ahora'; }
+}
+
+async function openNetworkPanel() {
+    const data = await renderNetwork();
+    // Al abrir el panel, las secciones sin IP se miden solas: el operador no
+    // tiene que adivinar si el dato que ve es viejo.
+    if (data && data.sections.some(section => !section.ip)) measureNetwork();
 }
 
 function togglePanel(panelId) {
@@ -170,7 +186,7 @@ function togglePanel(panelId) {
         logBadge.hidden = true;
         logContainer.scrollTop = logContainer.scrollHeight;
     }
-    if (panelId === 'netPanel') renderNetwork();
+    if (panelId === 'netPanel') openNetworkPanel();
     document.getElementById(`${panelId}Close`).focus({ preventScroll: true });
 }
 

@@ -215,6 +215,12 @@ function proxyPort(server) {
     try { return Number(new URL(server).port) || null; } catch { return null; }
 }
 
+// La etiqueta de un proxy sin credenciales: nunca sale la contraseña en una
+// respuesta de la API.
+function proxyLabel(server) {
+    try { const url = new URL(server); return `${url.protocol}//${url.host}`; } catch { return null; }
+}
+
 // The proxy a section uses: its own sticky port, so every section keeps a
 // stable exit IP instead of getting a new one on every request.
 function sectionProxy(sectionId) {
@@ -408,4 +414,4 @@ function createCamoufoxEngine({ loader = () => import('camoufox-js'), launchOpti
     };
 }
 
-module.exports = { createCamoufoxEngine, wrapPage, createFrameSession, measurePage, parseHeadless, diagnosePage, sectionProxy, parseProxyTemplate, stickyBase, buildProxyUrl, proxyPort };
+module.exports = { createCamoufoxEngine, wrapPage, createFrameSession, measurePage, parseHeadless, diagnosePage, sectionProxy, parseProxyTemplate, stickyBase, buildProxyUrl, proxyPort, proxyLabel };
