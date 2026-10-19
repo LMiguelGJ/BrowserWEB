@@ -302,19 +302,19 @@ class PyRockHTTP {
         return result;
     }
 
-    async click(x, y) {
+    async click(x, y, { humanize } = {}) {
         if (!this.isConnected) throw new Error('No conectado al servidor');
         this.onLog(`Haciendo click en (${x}, ${y})`);
-        const result = await this.makeRequest('/api/click', 'POST', { x, y });
+        const result = await this.makeRequest('/api/click', 'POST', { x, y, ...(humanize === undefined ? {} : { humanize }) });
         if (result.success) this.onLog(`Click exitoso en (${x}, ${y})`);
         else this.onLog(`Error en click: ${result.error}`);
         return result;
     }
 
-    async type(text) {
+    async type(text, { humanize } = {}) {
         if (!this.isConnected) throw new Error('No conectado al servidor');
         this.onLog(`Escribiendo texto: "${text}"`);
-        const result = await this.makeRequest('/api/type', 'POST', { text });
+        const result = await this.makeRequest('/api/type', 'POST', { text, ...(humanize === undefined ? {} : { humanize }) });
         if (result.success) this.onLog(`Texto escrito exitosamente: "${text}"`);
         else this.onLog(`Error escribiendo texto: ${result.error}`);
         return result;

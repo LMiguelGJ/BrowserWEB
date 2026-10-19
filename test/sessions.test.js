@@ -79,7 +79,7 @@ test('public sessions API lists default and creates isolated sections', async t 
     await fetch(`${base}/api/key`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key: 'Enter', session: second.id }) });
     await fetch(`${base}/api/navigate`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url: 'https://example.test/', session: second.id }) });
     assert.deepEqual(pages[0].calls, [['click', 8, 9]], 'omitted session routes to the default section');
-    assert.deepEqual(pages[1].calls, [['click', 3, 4], ['type', 'hello'], ['key', 'Enter'], ['navigate', 'https://example.test/']]);
+    assert.deepEqual(pages[1].calls, [['click', 3, 4], ...Array.from('hello', (ch) => ['type', ch]), ['key', 'Enter'], ['navigate', 'https://example.test/']], 'humanized typing reaches the page per character, in order');
     const capture = await fetch(`${base}/api/screenshot`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ session: second.id }) });
     assert.equal((await capture.json()).success, true);
     assert.equal((await (await fetch(`${base}/api/screenshot?session=${second.id}`)).json()).screenshot, 'data:image/jpeg;base64,shot');

@@ -7,6 +7,7 @@ const path = require('path');
 const WebSocket = require('ws');
 const { createScreencastController } = require('./screencast');
 const { createSessionManager } = require('./sessions');
+const { generateHumanPath, typeDelays } = require('./humanize');
 const PORT = process.env.PORT || 3000;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const rawLimit = process.env.MAX_SESSIONS;
@@ -138,8 +139,45 @@ function takeScreenshot(section) {
         return { success: true, screenshot: section.lastScreenshot };
     }).catch(error => ({ success: false, error: error.message }));
 }
-async function clickAt(x, y, section) { try { await section.page.mouse.click(x, y); return { success: true, message: `Click en (${x}, ${y})` }; } catch (error) { return { success: false, error: error.message }; } }
-async function typeText(text, section) { try { await section.page.keyboard.type(text); return { success: true, message: `Texto escrito: ${text}` }; } catch (error) { return { success: false, error: error.message }; } }
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Última posición del cursor por sección: de donde parte la trayectoria humanizada.
+const lastCursorBySection = new Map();
+
+async function clickAt(x, y, section, { humanize = true } = {}) {
+    try {
+        if (humanize) {
+            // Lección de Camoufox: un clic es un teletransporte detectable; una mano
+            // camina hasta el punto con timing real (incluidas vacilaciones).
+            const from = lastCursorBySection.get(section.id) || null;
+            const { steps, totalMs } = generateHumanPath(from, [x, y]);
+            for (const step of steps) {
+                if (step.delayMs > 0) await sleep(step.delayMs);
+                await section.page.mouse.move(step.x, step.y);
+            }
+            if (totalMs > 0) await sleep(totalMs);
+        }
+        await section.page.mouse.click(x, y);
+        lastCursorBySection.set(section.id, [x, y]);
+        return { success: true, message: `Click en (${x}, ${y})${humanize ? ' (humanizado)' : ''}` };
+    } catch (error) { return { success: false, error: error.message }; }
+}
+async function typeText(text, section, { humanize = true } = {}) {
+    try {
+        if (humanize) {
+            const delays = typeDelays(text);
+            let i = 0;
+            for (const ch of text) {
+                await section.page.keyboard.type(ch);
+                const delay = delays[i++] || 0;
+                if (delay > 0) await sleep(delay);
+            }
+        } else {
+            await section.page.keyboard.type(text);
+        }
+        return { success: true, message: `Texto escrito: ${text}` };
+    } catch (error) { return { success: false, error: error.message }; }
+}
 async function pressKey(key, section) { try { await section.page.keyboard.press(key); return { success: true, message: `Tecla presionada: ${key}` }; } catch (error) { return { success: false, error: error.message }; } }
 const app = express();
 const server = http.createServer(app);
@@ -195,8 +233,8 @@ app.post('/api/navigate', async (req, res) => {
 });
 app.post('/api/screenshot', async (req, res) => { try { const result = await takeScreenshot(routeSection(req)); lastAction = { type: 'screenshot', result, timestamp: Date.now() }; res.json(result); } catch (error) { apiError(res, error); } });
 app.get('/api/screenshot', (req, res) => { try { const screenshot = routeSection(req).lastScreenshot; res.json(screenshot ? { success: true, screenshot } : { success: false, error: 'No hay screenshot disponible' }); } catch (error) { apiError(res, error); } });
-app.post('/api/click', async (req, res) => { try { const section = routeSection(req); const { x, y } = req.body; if (x === undefined || y === undefined) return res.status(400).json({ success: false, error: 'Coordenadas x, y requeridas' }); const result = await clickAt(x, y, section); lastAction = { type: 'click', result, timestamp: Date.now() }; res.json(result); } catch (error) { apiError(res, error); } });
-app.post('/api/type', async (req, res) => { try { const section = routeSection(req); const { text } = req.body; if (!text) return res.status(400).json({ success: false, error: 'Texto requerido' }); const result = await typeText(text, section); lastAction = { type: 'type', result, timestamp: Date.now() }; res.json(result); } catch (error) { apiError(res, error); } });
+app.post('/api/click', async (req, res) => { try { const section = routeSection(req); const { x, y, humanize } = req.body; if (x === undefined || y === undefined) return res.status(400).json({ success: false, error: 'Coordenadas x, y requeridas' }); const result = await clickAt(x, y, section, { humanize: humanize !== false }); lastAction = { type: 'click', result, timestamp: Date.now() }; res.json(result); } catch (error) { apiError(res, error); } });
+app.post('/api/type', async (req, res) => { try { const section = routeSection(req); const { text, humanize } = req.body; if (!text) return res.status(400).json({ success: false, error: 'Texto requerido' }); const result = await typeText(text, section, { humanize: humanize !== false }); lastAction = { type: 'type', result, timestamp: Date.now() }; res.json(result); } catch (error) { apiError(res, error); } });
 app.post('/api/key', async (req, res) => { try { const section = routeSection(req); const { key } = req.body; if (!key) return res.status(400).json({ success: false, error: 'Tecla requerida' }); const result = await pressKey(key, section); lastAction = { type: 'key', result, timestamp: Date.now() }; res.json(result); } catch (error) { apiError(res, error); } });
 app.post('/api/init', async (req, res) => {
     try {
