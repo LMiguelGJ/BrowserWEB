@@ -1,38 +1,100 @@
 'use strict';
 // Fake `camoufox-js` module used through the PYROCK_CAMOUFOX_MODULE test seam.
-// It behaves like a Playwright Firefox browser: contexts, pages, mouse, keyboard,
-// screenshots and (optionally) page.screencast.
+//
+// It mimics the real package's contract: `Camoufox(options)` returns a
+// Playwright-like Browser with `newContext()`; each context yields pages with
+// `mouse`, `keyboard`, `goto`, `screenshot` and `isClosed`.
+//
+// The server imports this file through `import()`, the test through
+// `require()`: Node shares the CJS instance between both, so the test observes
+// the very same state the server mutates.
+//
+// State lives on globalThis and is recreated by `reset()`, so each test starts
+// from a clean registry.
+//
+// Optional configuration (read at call time, not at import time):
+//   globalThis.__pyrockCamoufoxConfig = {
+//     beforeLaunch: async (index) => {},    // may block, to test shutdown races
+//     beforeNewPage: async (context) => {}, // may block, to test in-flight creates
+//     makeBrowser: (index) => browser,      // override the default browser
+//   }
 const { EventEmitter } = require('node:events');
 
-const state = { launches: [], contexts: [], pages: [] };
+function freshState() {
+    return { launches: [], contexts: [], pages: [], browsers: [] };
+}
 
-async function Camoufox(options) {
-    state.launches.push(options);
+function currentState() {
+    if (!globalThis.__pyrockCamoufoxState) globalThis.__pyrockCamoufoxState = freshState();
+    return globalThis.__pyrockCamoufoxState;
+}
+
+function reset() {
+    globalThis.__pyrockCamoufoxState = freshState();
+    return globalThis.__pyrockCamoufoxState;
+}
+
+function makePage(context) {
+    const page = new EventEmitter();
+    page.calls = [];
+    page.closed = false;
+    page.url = () => 'about:blank';
+    page.isClosed = () => page.closed;
+    page.goto = async (url) => {
+        page.calls.push(['navigate', url]);
+        return { status: () => 200, statusText: () => 'OK' };
+    };
+    page.screenshot = async options => {
+        page.calls.push(['screenshot', options]);
+        return Buffer.from('shot');
+    };
+    page.mouse = {
+        move: async (...args) => page.calls.push(['move', ...args]),
+        click: async (...args) => page.calls.push(['click', ...args])
+    };
+    page.keyboard = {
+        type: async value => page.calls.push(['type', value]),
+        press: async value => page.calls.push(['key', value])
+    };
+    // Playwright exposes page.screencast; the fake never emits frames and does
+    // not record into page.calls (the preview bridge must not pollute the
+    // recorded call log the tests assert on).
+    page.screencast = { start: async () => {}, stop: async () => {} };
+    page.context = context;
+    return page;
+}
+
+function makeBrowser() {
     const browser = new EventEmitter();
-    browser.close = async () => { browser.emit('disconnected'); };
+    browser.closeCount = 0;
+    browser.close = async () => { browser.closeCount++; browser.emit('disconnected'); };
     browser.newContext = async () => {
-        const context = { closed: false, close: async () => { context.closed = true; } };
+        const state = currentState();
+        const context = { closed: false, pages: [] };
         context.newPage = async () => {
-            const page = { calls: [], closed: false };
-            page.isClosed = () => page.closed;
-            page.setViewportSize = async size => page.calls.push(['setViewportSize', size]);
-            page.goto = async url => { page.calls.push(['goto', url]); return { status: () => 200 }; };
-            page.screenshot = async () => Buffer.from('shot');
-            page.mouse = {
-                move: async (...args) => page.calls.push(['move', ...args]),
-                click: async (...args) => page.calls.push(['click', ...args])
-            };
-            page.keyboard = {
-                type: async value => page.calls.push(['type', value]),
-                press: async value => page.calls.push(['key', value])
-            };
+            const config = globalThis.__pyrockCamoufoxConfig || {};
+            if (config.beforeNewPage) await config.beforeNewPage(context);
+            const page = makePage(context);
+            context.pages.push(page);
             state.pages.push(page);
             return page;
         };
+        context.close = async () => { context.closed = true; };
         state.contexts.push(context);
         return context;
     };
     return browser;
 }
 
-module.exports = { Camoufox, state };
+async function Camoufox(options) {
+    const state = currentState();
+    const config = globalThis.__pyrockCamoufoxConfig || {};
+    const index = state.launches.length;
+    if (config.beforeLaunch) await config.beforeLaunch(index);
+    state.launches.push(options);
+    const browser = config.makeBrowser ? await config.makeBrowser(index) : makeBrowser();
+    state.browsers.push(browser);
+    return browser;
+}
+
+module.exports = { Camoufox, reset, currentState, makeBrowser, makePage };

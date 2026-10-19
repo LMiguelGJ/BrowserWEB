@@ -97,45 +97,33 @@ test('buffered retry timer is cleared when viewer closes, errors, page resets, o
 });
 
 test('shutdown overlapping public HTTP init must close the replacement browser', async t => {
-    const puppeteer = require('puppeteer');
-    const originalLaunch = puppeteer.launch;
-    const browsers = [];
+    const path = require('node:path');
+    const fixture = require('./fixtures/fake-camoufox');
+    const originalConfig = globalThis.__pyrockCamoufoxConfig;
+    const originalModule = process.env.PYROCK_CAMOUFOX_MODULE;
     let releaseLaunch;
     let enteredLaunch;
     const entered = new Promise(resolve => { enteredLaunch = resolve; });
     const gate = new Promise(resolve => { releaseLaunch = resolve; });
 
-    class Browser extends EventEmitter {
-        constructor() { super(); this.closeCount = 0; }
-        async close() { this.closeCount++; this.emit('disconnected'); }
-        makePage() {
-            const browserPage = new EventEmitter();
-            for (const method of ['setViewport', 'setUserAgent', 'setExtraHTTPHeaders', 'evaluateOnNewDocument']) {
-                browserPage[method] = async () => {};
-            }
-            return browserPage;
+    // The second launch (the replacement browser of /api/init) blocks, so the
+    // shutdown can race with it.
+    globalThis.__pyrockCamoufoxConfig = {
+        beforeLaunch: async index => {
+            if (index === 1) { enteredLaunch(); await gate; }
         }
-        async newPage() { return this.makePage(); }
-        async createBrowserContext() {
-            return { newPage: async () => this.makePage(), async close() {} };
-        }
-    }
-
-    puppeteer.launch = async () => {
-        if (browsers.length === 1) {
-            enteredLaunch();
-            await gate;
-        }
-        const browser = new Browser();
-        browsers.push(browser);
-        return browser;
     };
+    process.env.PYROCK_CAMOUFOX_MODULE = path.join(__dirname, 'fixtures', 'fake-camoufox.js');
+    const state = fixture.reset();
+    const { browsers } = state;
     const { server, startServer, stopServer } = require('../server');
     t.after(async () => {
         releaseLaunch();
         await stopServer();
         for (const browser of browsers) if (!browser.closeCount) await browser.close();
-        puppeteer.launch = originalLaunch;
+        globalThis.__pyrockCamoufoxConfig = originalConfig;
+        if (originalModule === undefined) delete process.env.PYROCK_CAMOUFOX_MODULE;
+        else process.env.PYROCK_CAMOUFOX_MODULE = originalModule;
     });
 
     await startServer({ host: '127.0.0.1', port: 0 });

@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/package.json",
   "name": "pyrock",
   "version": "1.0.0",
-  "description": "Automatización con Puppeteer y Control remoto de navegador - Docker Ready",
+  "description": "Automatización con Camoufox y Control remoto de navegador - Docker Ready",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -13,7 +13,9 @@
     "docker:dev": "docker run -p 3000:3000 -v $(pwd):/app pyrock"
   },
   "keywords": [
-    "puppeteer",
+    "camoufox",
+    "playwright",
+    "anti-detect",
     "automation",
     "websocket",
     "express",
@@ -25,23 +27,19 @@
   "license": "MIT",
   "dependencies": {
     "body-parser": "^1.20.2",
+    "camoufox-js": "^0.13.0",
     "cors": "^2.8.5",
     "cursory-js": "^2.1.0",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
-    "puppeteer": "^24.25.0",
+    "playwright-core": "1.62.1",
     "ws": "^8.22.0"
   },
-  "peerDependencies": {
-    "camoufox-js": "^0.13.0",
-    "playwright-core": ">=1.59.0 <1.63.0"
-  },
-  "peerDependenciesMeta": {
-    "camoufox-js": { "optional": true },
-    "playwright-core": { "optional": true }
+  "devDependencies": {
+    "puppeteer": "^24.25.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.0.0"
   },
   "repository": {
     "type": "git",

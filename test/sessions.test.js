@@ -6,45 +6,21 @@ const { createSessionManager } = require('../sessions');
 const { EventEmitter } = require('node:events');
 
 test('public sessions API lists default and creates isolated sections', async t => {
-    const puppeteer = require('puppeteer');
-    const originalLaunch = puppeteer.launch;
-    const contexts = [];
-    const pages = [];
-    const browsers = [];
-    let blockedPageCreation = null;
-    class Browser extends EventEmitter {
-        constructor() { super(); this.closeCount = 0; browsers.push(this); }
-        async close() { this.closeCount++; this.emit('disconnected'); }
-        async createBrowserContext() {
-            const context = {
-                closed: false,
-                async newPage() {
-                    if (blockedPageCreation) {
-                        const gate = blockedPageCreation;
-                        gate.enteredResolve();
-                        await gate.released;
-                        blockedPageCreation = null;
-                    }
-                    const page = new EventEmitter();
-                    page.calls = [];
-                    pages.push(page);
-                    page.url = () => 'about:blank';
-                    page.setViewport = page.setUserAgent = page.setExtraHTTPHeaders = page.evaluateOnNewDocument = async () => {};
-                    page.screenshot = async () => Buffer.from('shot');
-                    page.mouse = { click: async (...args) => page.calls.push(['click', ...args]) };
-                    page.keyboard = { type: async value => page.calls.push(['type', value]), press: async value => page.calls.push(['key', value]) };
-                    page.goto = async value => { page.calls.push(['navigate', value]); return null; };
-                    return page;
-                },
-                async close() { this.closed = true; }
-            };
-            contexts.push(context);
-            return context;
-        }
-    }
-    puppeteer.launch = async () => new Browser();
+    const path = require('node:path');
+    const fixture = require('./fixtures/fake-camoufox');
+    const originalConfig = globalThis.__pyrockCamoufoxConfig;
+    const originalModule = process.env.PYROCK_CAMOUFOX_MODULE;
+    globalThis.__pyrockCamoufoxConfig = undefined;
+    process.env.PYROCK_CAMOUFOX_MODULE = path.join(__dirname, 'fixtures', 'fake-camoufox.js');
+    const state = fixture.reset();
+    const { contexts, pages, browsers } = state;
     const { server, startServer, stopServer } = require('../server');
-    t.after(async () => { await stopServer(); puppeteer.launch = originalLaunch; });
+    t.after(async () => {
+        await stopServer();
+        globalThis.__pyrockCamoufoxConfig = originalConfig;
+        if (originalModule === undefined) delete process.env.PYROCK_CAMOUFOX_MODULE;
+        else process.env.PYROCK_CAMOUFOX_MODULE = originalModule;
+    });
     await startServer({ host: '127.0.0.1', port: 0 });
     const base = `http://127.0.0.1:${server.address().port}`;
     const listing = await fetch(`${base}/api/sessions`);
@@ -73,16 +49,23 @@ test('public sessions API lists default and creates isolated sections', async t 
     assert.deepEqual(await unknown.json(), { success: false, error: 'Sección no encontrada' });
     const click = await fetch(`${base}/api/click`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ x: 3, y: 4, session: second.id }) });
     assert.equal(click.status, 200);
-    assert.deepEqual(pages[1].calls, [['click', 3, 4]]);
+    // The click is humanized: the cursor walks to the target before pressing.
+    assert.deepEqual(pages[1].calls.at(-1), ['click', 3, 4], 'the click lands on the requested coordinates');
+    assert.ok(pages[1].calls.some(call => call[0] === 'move'), 'the cursor walks before clicking');
+    assert.ok(pages[1].calls.findIndex(call => call[0] === 'move') < pages[1].calls.findIndex(call => call[0] === 'click'), 'the walk happens before the click');
     await fetch(`${base}/api/click`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ x: 8, y: 9 }) });
     await fetch(`${base}/api/type`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: 'hello', session: second.id }) });
     await fetch(`${base}/api/key`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key: 'Enter', session: second.id }) });
     await fetch(`${base}/api/navigate`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url: 'https://example.test/', session: second.id }) });
-    assert.deepEqual(pages[0].calls, [['click', 8, 9]], 'omitted session routes to the default section');
-    assert.deepEqual(pages[1].calls, [['click', 3, 4], ...Array.from('hello', (ch) => ['type', ch]), ['key', 'Enter'], ['navigate', 'https://example.test/']], 'humanized typing reaches the page per character, in order');
+    assert.deepEqual(pages[0].calls.at(-1), ['click', 8, 9], 'omitted session routes to the default section');
+    assert.deepEqual(
+        pages[1].calls.filter(call => call[0] !== 'move'),
+        [['click', 3, 4], ...Array.from('hello', (ch) => ['type', ch]), ['key', 'Enter'], ['navigate', 'https://example.test/']],
+        'humanized typing reaches the page per character, in order'
+    );
     const capture = await fetch(`${base}/api/screenshot`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ session: second.id }) });
     assert.equal((await capture.json()).success, true);
-    assert.equal((await (await fetch(`${base}/api/screenshot?session=${second.id}`)).json()).screenshot, 'data:image/jpeg;base64,shot');
+    assert.equal((await (await fetch(`${base}/api/screenshot?session=${second.id}`)).json()).screenshot, `data:image/jpeg;base64,${Buffer.from('shot').toString('base64')}`);
     const restarted = await fetch(`${base}/api/init`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ session: second.id }) });
     assert.equal((await restarted.json()).success, true);
     assert.equal((await (await fetch(`${base}/api/sessions`)).json()).sessions[1].name, 'Cuenta');
@@ -107,7 +90,7 @@ test('public sessions API lists default and creates isolated sections', async t 
         released: new Promise(resolve => { releaseResolve = resolve; }),
         release: () => releaseResolve()
     };
-    blockedPageCreation = gate;
+    globalThis.__pyrockCamoufoxConfig = { beforeNewPage: async () => { gate.enteredResolve(); await gate.released; } };
     const pendingCreate = fetch(`${base}/api/sessions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'InFlight' }) });
     await gate.entered;
     let createSettled = false;

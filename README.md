@@ -162,26 +162,28 @@ Hay **un proceso Chromium compartido** y varias secciones independientes, cada u
 - `NODE_ENV` - Entorno de ejecución (production/development)
 - `PORT` - Puerto del servidor (default: 3000)
 - `MAX_SESSIONS` - Máximo de secciones de navegador (default: 5; valores válidos: 1–10; otros valores usan el default)
-- `ENGINE` - Motor del navegador: `chromium` (default) o `camoufox`
-- `CAMOUFOX_HEADLESS` - Solo con `ENGINE=camoufox`: `true` (default), `false` o `virtual` (Xvfb, recomendado en Docker)
+- `CAMOUFOX_HEADLESS` - Modo del navegador: `true` (default), `false` o `virtual` (Xvfb, el que usa la imagen Docker)
+- `CAMOUFOX_OS` - Sistema operativo simulado en la huella (default: el del host)
+- `CAMOUFOX_LOCALE` - Locale de la huella (default: `es-ES`)
 
-### Motor Camoufox (opcional)
+### Motor: Camoufox
 
-[Camoufox](https://github.com/daijro/camoufox) es un Firefox anti-detección que se controla con Playwright. Con `ENGINE=camoufox` cada sección sigue siendo un contexto aislado, pero el navegador enmascara su huella a nivel de código nativo y humaniza el cursor por sí mismo, así que PyRock **no** apila su propio humanizador de cursor ni inyecta parches de Chrome.
+[Camoufox](https://github.com/daijro/camoufox) es un Firefox anti-detección que se controla con Playwright, y es el **único motor** de PyRock. Cada sección sigue siendo un contexto aislado (cookies y storage propios), pero el navegador enmascara su huella a nivel de código nativo, así que PyRock no inyecta parches de Chrome ni cabeceras al estilo Chrome: se contradirían.
 
-- Imagen aparte: `docker build -f Dockerfile.camoufox -t pyrock-camoufox .` (Node 22 y Linux glibc; la imagen Alpine actual no puede ejecutar el binario de Firefox de Camoufox).
-- Dependencias opcionales: `camoufox-js` y `playwright-core` (>=1.59 <1.63) se instalan solo en esa imagen; la imagen Chromium no cambia.
-- El preview usa `page.screencast` (hasta 25 fps en Firefox) y, si no existe, capturas por sondeo.
-- **Estado:** probado con navegadores simulados (API, aislamiento por sección, preview, clic, tipeo). **No se ha probado contra el binario real de Camoufox**: validándolo en el servidor con `ENGINE=camoufox` antes de usarlo en producción. El comando `npx camoufox-js fetch` del Dockerfile tampoco está verificado.
+- El preview usa `page.screencast` (hasta 25 fps en Firefox) y, si el build no lo expone, capturas por sondeo.
+- El frame se pide al tamaño CSS real de la página: el cliente mapea el clic sobre la imagen a coordenadas de página usando el tamaño en píxeles de la imagen, así que ambos tienen que coincidir exactamente.
+- **Estado:** el camino migrado (adaptador, puente de frames, aislamiento por sección, recuperación ante caída del navegador) está probado con un navegador real en los tests de integración. **El binario de Camoufox no se probó localmente**: la primera ejecución real es en el servidor. El comando `npx camoufox-js fetch` del Dockerfile tampoco está verificado.
 - Un motor nuevo no arregla la reputación de la IP: Cloudflare también puntúa la IP del servidor.
 
 ### Entrada humanizada
 
-En el motor Chromium, `/api/click` camina el cursor por una trayectoria grabada de una persona real (cursory-js, 60 Hz, máximo 1,5 s) antes de hacer clic, y `/api/type` escribe con retardo variable por tecla. Envía `humanize: false` en el cuerpo para el comportamiento instantáneo anterior.
+`/api/click` camina el cursor por una trayectoria grabada de una persona real (cursory-js, 60 Hz, máximo 1,5 s) antes de hacer clic, y `/api/type` escribe con retardo variable por tecla. Envía `humanize: false` en el cuerpo para el comportamiento instantáneo.
+
+El humanizador de Camoufox es de arranque y no admite desactivarse por petición, así que PyRock lo desactiva al lanzar el navegador y usa el suyo, que sí respeta `humanize: false`.
 
 ### Características Docker
 
-- **Chrome headless** preinstalado
+- **Camoufox headless** preinstalado (binario descargado en el build)
 - **Usuario no-root** para seguridad
 - **Optimizaciones** para contenedores
 - **Recuperación automática** del navegador

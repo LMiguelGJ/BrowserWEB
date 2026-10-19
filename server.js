@@ -2,20 +2,23 @@
 require('dotenv').config();
 const express = require('express');
 const http = require('http');
-const puppeteer = require('puppeteer');
 const path = require('path');
+const { pathToFileURL } = require('node:url');
 const WebSocket = require('ws');
 const { createScreencastController } = require('./screencast');
 const { createSessionManager } = require('./sessions');
 const { generateHumanPath, typeDelays } = require('./humanize');
-const { createCamoufoxEngine, selectEngine } = require('./engines/camoufox');
+const { createCamoufoxEngine } = require('./engines/camoufox');
 const PORT = process.env.PORT || 3000;
-const IS_PRODUCTION = process.env.NODE_ENV === 'production';
-// ENGINE=camoufox runs sections on Camoufox (anti-detect Firefox via Playwright); Chromium stays the default.
-// PYROCK_CAMOUFOX_MODULE is a test seam: dynamic import() cannot be intercepted, so tests point it at a fake module.
-const camoufoxEngine = selectEngine(process.env) === 'camoufox'
-    ? createCamoufoxEngine({ loader: () => (process.env.PYROCK_CAMOUFOX_MODULE ? Promise.resolve(require(process.env.PYROCK_CAMOUFOX_MODULE)) : import('camoufox-js')) })
-    : null;
+// Camoufox (anti-detect Firefox via Playwright) is the only engine.
+// PYROCK_CAMOUFOX_MODULE is a test seam: it points the loader at a fixture module.
+// The env var is read on every launch (not at import time) so a test can set it
+// after requiring this module.
+const camoufoxLoader = () => {
+    const seam = process.env.PYROCK_CAMOUFOX_MODULE;
+    return seam ? import(pathToFileURL(path.resolve(seam)).href) : import('camoufox-js');
+};
+const engine = createCamoufoxEngine({ loader: camoufoxLoader });
 const rawLimit = process.env.MAX_SESSIONS;
 const parsedLimit = rawLimit && /^\d+$/.test(rawLimit) ? Number(rawLimit) : NaN;
 const MAX_SESSIONS = Number.isInteger(parsedLimit) && parsedLimit >= 1 ? Math.min(parsedLimit, 10) : 5;
@@ -29,11 +32,6 @@ const log = {
     warn: (...args) => console.warn(`[${new Date().toLocaleTimeString()}] WARN:`, ...args),
     error: (...args) => console.error(`[${new Date().toLocaleTimeString()}] ERROR:`, ...args)
 };
-function getBrowserConfig() {
-    const config = { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] };
-    if (IS_PRODUCTION) config.executablePath = '/usr/bin/chromium-browser';
-    return config;
-}
 function serializeMutation(operation) {
     const result = mutationQueue.then(operation, operation);
     mutationQueue = result.catch(() => {});
@@ -42,7 +40,7 @@ function serializeMutation(operation) {
 async function ensureBrowser() {
     if (shuttingDown) throw Object.assign(new Error('Server is shutting down'), { status: 503 });
     if (browser) return browser;
-    const launched = camoufoxEngine ? await camoufoxEngine.launch() : await puppeteer.launch(getBrowserConfig());
+    const launched = await engine.launch();
     if (shuttingDown) { await launched.close(); throw Object.assign(new Error('Server is shutting down'), { status: 503 }); }
     browser = launched;
     launched.once?.('disconnected', () => {
@@ -52,49 +50,20 @@ async function ensureBrowser() {
     });
     return launched;
 }
-async function configurePage(page) {
-    await page.setViewport({ width: 1366, height: 768 });
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-    await page.setExtraHTTPHeaders({
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-        'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8', 'Accept-Encoding': 'gzip, deflate, br', 'DNT': '1',
-        'Connection': 'keep-alive', 'Upgrade-Insecure-Requests': '1', 'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'none', 'Sec-Fetch-User': '?1', 'Cache-Control': 'max-age=0'
-    });
-    await page.evaluateOnNewDocument(() => {
-        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
-        Object.defineProperty(navigator, 'languages', { get: () => ['es-ES', 'es', 'en'] });
-        window.chrome = { runtime: {} };
-        const originalQuery = window.navigator.permissions.query;
-        window.navigator.permissions.query = parameters => parameters.name === 'notifications' ? Promise.resolve({ state: 'granted' }) : originalQuery(parameters);
-    });
-}
+// Camoufox owns the fingerprint (user agent, headers, window size): PyRock
+// injects no Chrome-style patches, because they would contradict it.
 const sessions = createSessionManager({
     maxSessions: MAX_SESSIONS,
     async openPage() {
         const activeBrowser = await ensureBrowser();
-        if (camoufoxEngine) {
-            const opened = await camoufoxEngine.openPage(activeBrowser);
-            if (shuttingDown || browser !== activeBrowser) {
-                try { await camoufoxEngine.closeContext(opened.context); } catch (closeError) { shutdownCleanupError ||= closeError; }
-                throw Object.assign(new Error('Browser unavailable'), { status: 503 });
-            }
-            return opened;
+        const opened = await engine.openPage(activeBrowser);
+        if (shuttingDown || browser !== activeBrowser) {
+            try { await engine.closeContext(opened.context); } catch (closeError) { shutdownCleanupError ||= closeError; }
+            throw Object.assign(new Error('Browser unavailable'), { status: 503 });
         }
-        const context = await activeBrowser.createBrowserContext();
-        try {
-            if (shuttingDown) throw Object.assign(new Error('Server is shutting down'), { status: 503 });
-            const page = await context.newPage();
-            await configurePage(page);
-            if (shuttingDown || browser !== activeBrowser) throw Object.assign(new Error('Browser unavailable'), { status: 503 });
-            return { context, page };
-        } catch (error) {
-            try { await context.close(); } catch (closeError) { shutdownCleanupError ||= closeError; }
-            throw error;
-        }
+        return opened;
     },
-    closeContext: context => context.close(),
+    closeContext: context => engine.closeContext(context),
     createController: section => createScreencastController({ getPage: () => section.page })
 });
 async function initBrowser() {
@@ -123,7 +92,6 @@ async function navigateToUrl(url, section, retryCount = 0) {
     try {
         if (!section?.page || section.state !== 'ready') throw new Error('Navegador no inicializado');
         log.info(`Navegando a: ${url}${retryCount ? ` (intento ${retryCount + 1}/${maxRetries + 1})` : ''}`);
-        await section.page.setExtraHTTPHeaders({ 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8', 'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8', 'Accept-Encoding': 'gzip, deflate, br', 'DNT': '1', 'Connection': 'keep-alive', 'Upgrade-Insecure-Requests': '1' });
         const response = await section.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
         if (response) {
             const status = response.status(); log.info(`Respuesta HTTP: ${status}`);
@@ -160,11 +128,14 @@ const lastCursorBySection = new Map();
 
 async function clickAt(x, y, section, { humanize = true } = {}) {
     try {
-        if (humanize && !camoufoxEngine) {
+        if (humanize && !engine.humanizesCursor) {
             // Lección de Camoufox: un clic es un teletransporte detectable; una mano
             // camina hasta el punto con timing real (incluidas vacilaciones).
-            // Con Camoufox el propio navegador humaniza el cursor: no se apila un segundo humanizador.
-            const from = lastCursorBySection.get(section.id) || null;
+            // Camoufox humaniza el cursor por launch, no por petición, así que aquí
+            // se usa el generador de PyRock (cursory-js) y `humanize: false` funciona.
+            // El puntero virtual arranca en el origen: esa posición es conocida, así que
+            // el primer clic también camina en lugar de teletransportarse.
+            const from = lastCursorBySection.get(section.id) || [0, 0];
             const { steps, trailingDelayMs } = generateHumanPath(from, [x, y]);
             for (const step of steps) {
                 if (step.delayMs > 0) await sleep(step.delayMs);

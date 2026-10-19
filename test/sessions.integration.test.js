@@ -13,17 +13,15 @@ const waitFor = async (predicate, message, timeoutMs = 10_000) => {
 };
 
 test('isolated sections keep cookies, actions and preview frames separate across restart and browser recovery', { timeout: 180_000 }, async t => {
-    const puppeteer = require('puppeteer');
-    const originalLaunch = puppeteer.launch;
-    const browsers = [];
+    const path = require('node:path');
+    const originalModule = process.env.PYROCK_CAMOUFOX_MODULE;
+    // A real browser, launched through the same camoufox-js contract the server uses.
+    // The Camoufox binary itself is not needed here: the engine path (Playwright
+    // adapter, screencast bridge, context isolation, crash recovery) is what is tested.
+    process.env.PYROCK_CAMOUFOX_MODULE = path.join(__dirname, 'fixtures', 'playwright-chromium-camoufox.js');
     const sockets = new Set();
     const observedCookies = new Map();
     const observedActions = [];
-    puppeteer.launch = async (...args) => {
-        const browser = await originalLaunch(...args);
-        browsers.push(browser);
-        return browser;
-    };
 
     const { app, server, startServer, stopServer } = require('../server');
     app.get('/__sessions/cookie/:value', (req, res) => {
@@ -49,9 +47,13 @@ test('isolated sections keep cookies, actions and preview frames separate across
     });
 
     t.after(async () => {
-        for (const socket of sockets) socket.terminate();
-        await stopServer();
-        puppeteer.launch = originalLaunch;
+        // Each cleanup step is isolated: one failure must not skip the rest, or the
+        // browser process stays alive and the test never exits.
+        for (const socket of sockets) { try { socket.terminate(); } catch { /* already closed */ } }
+        try { await stopServer(); } catch { /* already stopped */ }
+        try { await require('./fixtures/playwright-chromium-camoufox').stop(); } catch { /* already gone */ }
+        if (originalModule === undefined) delete process.env.PYROCK_CAMOUFOX_MODULE;
+        else process.env.PYROCK_CAMOUFOX_MODULE = originalModule;
     });
 
     await startServer({ host: '127.0.0.1', port: 0 });
@@ -125,8 +127,10 @@ test('isolated sections keep cookies, actions and preview frames separate across
     assert.equal(betaStream.socket.readyState, 1, 'restarting alpha must keep beta viewer connected');
 
     alphaStream.socket.close(); betaStream.socket.close();
-    await waitFor(() => browsers.length > 0 && browsers.at(-1).process()?.pid, 'server browser process unavailable');
-    browsers.at(-1).process().kill();
+    // The browser going away fires the same 'disconnected' event a crash fires,
+    // which is the path the server has to survive.
+    await waitFor(() => globalThis.__pyrockPlaywrightBrowser, 'server browser unavailable');
+    await globalThis.__pyrockPlaywrightBrowser.close();
     await waitFor(async () => (await (await fetch(`${base}/api/sessions`)).json()).sessions.every(session => session.state === 'unavailable'),
         'sections were not marked unavailable after browser process exit');
     await request('init', {});
