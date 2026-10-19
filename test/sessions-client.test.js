@@ -48,6 +48,15 @@ test('late manual screenshot from an inactive section does not replace the share
   assert.deepEqual(images, []);
 });
 
+test('the inline add input arrives pre-filled with the next section name, still editable', async () => {
+  const h=createScriptHarness({sessions:[{id:'s1',name:'Sección 1',url:'/'}]});await h.load();
+  h.elements.get('sessionAdd').dispatch('click');
+  const input=h.elements.get('sessionList').children[0].children[0];
+  assert.equal(input.value,'Sección 2','next name pre-filled');
+  input.value='Mi sección';input.dispatch('keydown',{key:'Enter'});await new Promise(r=>setImmediate(r));
+  assert.ok(h.operations.some(x=>x[0]==='create'&&x[1]==='Mi sección'),'editing before Enter is respected');
+});
+
 test('sidebar add opens inline input; Escape and blur cancel; Enter creates and selects', async () => {
   const h=createScriptHarness();await h.load();const add=h.elements.get('sessionAdd');add.dispatch('click');
   let list=h.elements.get('sessionList'),input=list.children[0].children[0];assert.equal(input.tag,'input');input.dispatch('keydown',{key:'Escape'});assert.equal(list.children.length,1);

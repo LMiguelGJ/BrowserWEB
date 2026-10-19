@@ -362,9 +362,11 @@ function activateSession(section) {
 async function addSessionInline() {
     const list = document.getElementById('sessionList'); if (list.querySelector('input')) return;
     const li = document.createElement('li'), input = document.createElement('input'); input.setAttribute('aria-label', 'Nombre de sección');
+    // Llega pre-cargado con el nombre siguiente; queda seleccionado para editar o reemplazar.
+    input.value = `Sección ${sessionRecords.length + 1}`;
     li.append(input); list.prepend(li); const cancel = () => li.remove();
     input.addEventListener('keydown', async e => { if (e.key === 'Escape') cancel(); if (e.key === 'Enter') { try { const result = await pyrock.createSession(input.value.trim() || undefined); await refreshSessions(); activateSession(result.session); } catch (error) { addLog(error.message, 'error'); } } });
-    input.addEventListener('blur', cancel); input.focus();
+    input.addEventListener('blur', cancel); input.focus(); if (typeof input.select === 'function') input.select();
 }
 document.getElementById('sessionAdd').addEventListener('click', addSessionInline);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshSessions(); });
