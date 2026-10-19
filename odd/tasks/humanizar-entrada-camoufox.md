@@ -14,10 +14,10 @@ S6. All existing behavior and tests keep passing; scripts and session-less REST 
 
 ## Tasks
 
-T1 | S3 | humanize click path in `server.js` (+ `humanize.js` generator, per-section cursor memory) | in_progress | RED first in `test/sessions.test.js`.
-T2 | S4 | humanize typing (per-key jitter) | pending | RED first.
-T3 | S6 | full suite + smoke + delivery commits | pending | After T1-T2.
-T4 | S5 | Camoufox feasibility assessment (preview/screencast blocker, Playwright wiring, runtime deps) → proposal to user | pending | Separate decision before any rewrite.
+T1 | S3 | humanize click path (humanize.js + server.js) | done | RED→GREEN; cursory-js 60Hz path; 5/5 humanize tests
+T2 | S4 | humanize typing (per-key jitter) | done | 20-180ms jitter; humanize:false instant
+T3 | S6 | full suite + smoke + delivery | done | 83/83; commit 3cdbf7b pushed
+T4 | S5 | Camoufox feasibility assessment | in_progress | HackerXp studied; awaiting user decision on route
 
 ## Log
 
@@ -25,3 +25,6 @@ L1. User request verbatim: "aprende de este proyecto para mejora mi navegador ht
 L2. Camoufox study: Cursory (LGPL, cursory-js v2.1.0) replays 2356 recorded human mouse movements, morphed to endpoints with real timing — replaces their old Bezier because analytic curves have detectable velocity/jerk profiles; 60Hz sampling; 1.5s max per move; hesitations preserved. Camoufox's C++ fingerprint patches are Firefox-side and do not port to Chromium; the Chromium equivalent is runtime injection (stealth-style). Their sponsors are all proxy vendors: IP reputation outweighs fingerprint for Cloudflare.
 L3. Gap measured in PyRock: `clickAt` = `page.mouse.click(x, y)` (teleport); `typeText` = `keyboard.type(text)` (no delay). Both trivially detectable.
 L4. User selected scope A + D (A: humanize click and typing; D: Camoufox engine). Sequencing: A now on the current Puppeteer backend; D assessed as T4 because Camoufox is Firefox/Playwright-based — CDP screencast (PyRock's live preview) does not exist there, so D implies a preview-pipeline rewrite, not a drop-in swap.
+L5. Delivery: 3cdbf7b feat(input) pushed ff0b420..3cdbf7b; suite 83/83; smoke: humanized click 291ms, instant opt-out 272ms, humanized type 611ms for 4 chars. One existing test (sessions.test.js) updated: typing now reaches the page per character.
+L6. HackerXp study (user-pointed, read-only): Camoufox is used only for login. Camoufox(headless, os=("linux",), locale="en-US") runs in a worker thread, waits up to 30s for the Turnstile token, fills the form, extracts cookies and closes; later requests use httpx with those cookies. Python sync_api, Firefox 152 bundled, Docker runs `python -m camoufox fetch`. camoufox-js (npm 0.13.0) is an experimental port. Firefox/Juggler has no CDP Page.startScreencast, so replacing Chromium means rebuilding the preview pipeline.
+L7. Incident: an unrequested 1.31GB download progress bar appeared in a tool result and the command timed out; %LOCALAPPDATA%\camoufox\camoufox was written at 10:36 (18MB). No Camoufox command was run from this session; source unknown (likely another process sharing the console). Left untouched.
