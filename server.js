@@ -8,7 +8,7 @@ const WebSocket = require('ws');
 const { createScreencastController } = require('./screencast');
 const { createSessionManager } = require('./sessions');
 const { generateHumanPath, typeDelays } = require('./humanize');
-const { createCamoufoxEngine } = require('./engines/camoufox');
+const { createCamoufoxEngine, diagnosePage } = require('./engines/camoufox');
 const PORT = process.env.PORT || 3000;
 // Camoufox (anti-detect Firefox via Playwright) is the only engine.
 // PYROCK_CAMOUFOX_MODULE is a test seam: it points the loader at a fixture module.
@@ -18,7 +18,6 @@ const camoufoxLoader = () => {
     const seam = process.env.PYROCK_CAMOUFOX_MODULE;
     return seam ? import(pathToFileURL(path.resolve(seam)).href) : import('camoufox-js');
 };
-const engine = createCamoufoxEngine({ loader: camoufoxLoader });
 const rawLimit = process.env.MAX_SESSIONS;
 const parsedLimit = rawLimit && /^\d+$/.test(rawLimit) ? Number(rawLimit) : NaN;
 const MAX_SESSIONS = Number.isInteger(parsedLimit) && parsedLimit >= 1 ? Math.min(parsedLimit, 10) : 5;
@@ -32,6 +31,8 @@ const log = {
     warn: (...args) => console.warn(`[${new Date().toLocaleTimeString()}] WARN:`, ...args),
     error: (...args) => console.error(`[${new Date().toLocaleTimeString()}] ERROR:`, ...args)
 };
+// The engine reports the page's console errors and failed requests through the log.
+const engine = createCamoufoxEngine({ loader: camoufoxLoader, logger: log });
 function serializeMutation(operation) {
     const result = mutationQueue.then(operation, operation);
     mutationQueue = result.catch(() => {});
@@ -104,6 +105,10 @@ async function navigateToUrl(url, section, retryCount = 0) {
                 throw new Error(message);
             }
         }
+        // A preview can be blank while the request "succeeded"; report what the page
+        // actually did so the cause is in the log, not in a guess.
+        const diagnosis = await diagnosePage(section.page.raw);
+        log.info('Estado de la página:', JSON.stringify(diagnosis));
         return { success: true, message: 'Navegación exitosa', status: response?.status() };
     } catch (error) {
         const message = error.message;

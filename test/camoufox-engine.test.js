@@ -7,15 +7,27 @@ const { wrapPage, createCamoufoxEngine, measurePage } = require('../engines/camo
 
 function fakePlaywrightPage({ withScreencast = true, viewport = { width: 900, height: 600 } } = {}) {
     const calls = [];
+    const handlers = new Map();
     const page = {
         calls,
         closed: false,
+        on(type, handler) {
+            if (!handlers.has(type)) handlers.set(type, []);
+            handlers.get(type).push(handler);
+        },
+        emit(type, payload) { for (const handler of handlers.get(type) || []) handler(payload); },
         mouse: { move: async (...a) => calls.push(['mouse.move', ...a]), click: async (...a) => calls.push(['mouse.click', ...a]) },
         keyboard: { type: async (...a) => calls.push(['keyboard.type', ...a]), press: async (...a) => calls.push(['keyboard.press', ...a]) },
         viewportSize: () => viewport,
-        // The fake emulates the browser's window size: the real evaluate runs
-        // inside the page, where window.innerWidth/innerHeight exist.
-        evaluate: async () => ({ width: viewport.width, height: viewport.height }),
+        // The fake emulates the browser's window size, and answers a document
+        // inspection when the asked function looks at the DOM.
+        evaluate: async fn => {
+            const source = String(fn);
+            if (source.includes('readyState')) {
+                return { readyState: 'complete', title: 'Página', textLength: 42, spinnerish: 0 };
+            }
+            return { width: viewport.width, height: viewport.height };
+        },
         goto: async (url, options) => { calls.push(['goto', url, options]); return { status: () => 200, statusText: () => 'OK' }; },
         screenshot: async options => { calls.push(['screenshot', options]); return Buffer.from('jpeg-bytes'); },
         isClosed: () => page.closed
@@ -190,4 +202,34 @@ test('wrapPage leaves the fingerprint to Camoufox: no viewport, user agent, head
 test('wrapPage frame bridge is an EventEmitter-compatible session (screencast.js uses on/off/removeListener)', async () => {
     const session = await wrapPage(fakePlaywrightPage()).createCDPSession();
     assert.ok(session instanceof EventEmitter || (typeof session.on === 'function' && typeof session.off === 'function'));
+});
+
+test('the page console errors and failed requests reach the log', async () => {
+    const warnings = [];
+    const pages = [];
+    const browser = {
+        newContext: async () => ({
+            newPage: async () => { const p = fakePlaywrightPage(); pages.push(p); return p; },
+            close: async () => {}
+        }),
+        close: async () => {}
+    };
+    const engine = createCamoufoxEngine({
+        loader: async () => ({ Camoufox: async () => browser }),
+        logger: { warn: message => warnings.push(message), info: () => {}, error: () => {} }
+    });
+    const opened = await engine.openPage(await engine.launch());
+    opened.page.raw.emit('console', { type: () => 'error', text: () => 'boom en la página' });
+    opened.page.raw.emit('requestfailed', { url: () => 'https://cdn.example/x.js', failure: () => ({ errorText: 'net::ERR_BLOCKED_BY_CLIENT' }) });
+    assert.ok(warnings.some(message => /boom en la página/.test(message)), 'the console error is reported');
+    assert.ok(warnings.some(message => /cdn\.example\/x\.js/.test(message)), 'the failed request is reported');
+});
+
+test('diagnosePage explains a blank preview: a page stuck loading never ran its app', async () => {
+    const { diagnosePage } = require('../engines/camoufox');
+    const page = fakePlaywrightPage();
+    const diagnosis = await diagnosePage(page);
+    assert.equal(diagnosis.readyState, 'complete');
+    assert.equal(typeof diagnosis.textLength, 'number');
+    assert.equal(diagnosis.spinnerish, 0);
 });

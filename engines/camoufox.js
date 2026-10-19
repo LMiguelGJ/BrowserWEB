@@ -167,7 +167,26 @@ async function resolveCamoufox(loader) {
     return exported;
 }
 
-function createCamoufoxEngine({ loader = () => import('camoufox-js'), launchOptions = {} } = {}) {
+// Reads what the controlled page actually did, so a blank preview can be
+// explained instead of guessed: a page stuck in "loading" never ran its app,
+// while a "complete" page with no text is a different failure.
+async function diagnosePage(page) {
+    try {
+        return await page.evaluate(() => {
+            const text = (document.body?.innerText || '').replace(/\s+/g, ' ').trim();
+            return {
+                readyState: document.readyState,
+                title: document.title,
+                textLength: text.length,
+                spinnerish: document.querySelectorAll('[class*="spinner"],[class*="loading"],[class*="Loader"],[role="progressbar"]').length
+            };
+        });
+    } catch (error) {
+        return { error: error.message.split('\n')[0] };
+    }
+}
+
+function createCamoufoxEngine({ loader = () => import('camoufox-js'), launchOptions = {}, logger = null } = {}) {
     return {
         name: 'camoufox',
         // PyRock humanizes the cursor itself (cursory-js), so Camoufox's
@@ -194,7 +213,19 @@ function createCamoufoxEngine({ loader = () => import('camoufox-js'), launchOpti
             // and overriding its viewport or locale would break consistency.
             const context = await browser.newContext();
             try {
-                const page = wrapPage(await context.newPage());
+                const raw = await context.newPage();
+                if (logger) {
+                    // A blank preview is the symptom; these are the causes.
+                    raw.on('console', message => {
+                        if (message.type() === 'error') logger.warn(`error de consola en la página: ${message.text().slice(0, 160)}`);
+                    });
+                    raw.on('pageerror', error => logger.warn(`excepción en la página: ${error.message.slice(0, 160)}`));
+                    raw.on('requestfailed', request => {
+                        const reason = request.failure()?.errorText || 'falló';
+                        logger.warn(`petición fallida: ${request.url().slice(0, 120)} (${reason})`);
+                    });
+                }
+                const page = wrapPage(raw);
                 return { context, page };
             } catch (error) {
                 try { await context.close(); } catch { /* the original failure is the useful one */ }
@@ -205,4 +236,4 @@ function createCamoufoxEngine({ loader = () => import('camoufox-js'), launchOpti
     };
 }
 
-module.exports = { createCamoufoxEngine, wrapPage, createFrameSession, measurePage, parseHeadless };
+module.exports = { createCamoufoxEngine, wrapPage, createFrameSession, measurePage, parseHeadless, diagnosePage };
