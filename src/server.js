@@ -117,7 +117,7 @@ function scheduleRecoveryRetry(id, record) {
 // Replaces the exit of a section whose proxy stopped working, keeping its
 // identity, its cookies and storage and the page it was on. One recovery per
 // section at a time; closing the section or stopping the server cancels it.
-async function recoverSection(id) {
+async function recoverSection(id, { manual = false } = {}) {
     const net = ensureNetwork();
     const section = sessions.get(id);
     if (!net || !section || shuttingDown) return false;
@@ -134,7 +134,9 @@ async function recoverSection(id) {
             section.recovering = true;
             if (section.page) {
                 section.snapshot = mergeSnapshots(await captureSnapshot(section), section.snapshot);
-                await net.reportLoss(id);
+                // A manual request replaces a working exit on purpose: it is not a
+                // failure, so the pool must not retire that proxy.
+                if (!manual) await net.reportLoss(id);
                 await serializeMutation(() => sessions.suspend(id));
             }
             const assignment = await net.assign(id, { isCancelled: cancelled, recovering: true });
@@ -472,6 +474,19 @@ function networkOverview() {
     };
 }
 app.get('/api/network', (_req, res) => res.json(networkOverview()));
+// The operator asks the flow to start again for one section: it looks for a
+// free exit first, and only then the paid fallback. The search can take a
+// minute, so the answer is immediate and the panel shows the progress.
+app.post('/api/network/request', (req, res) => {
+    try {
+        if (!ensureNetwork()) return res.status(400).json({ success: false, error: 'La búsqueda de salidas necesita el modo híbrido' });
+        const id = req.body?.session;
+        if (!id) return res.status(400).json({ success: false, error: 'Sección requerida' });
+        if (!sessions.get(id)) return res.status(404).json({ success: false, error: 'Sección no encontrada' });
+        Promise.resolve(recoverSection(id, { manual: true })).catch(() => {});
+        res.json({ ...networkOverview(), requested: id });
+    } catch (error) { apiError(res, error); }
+});
 app.post('/api/network/measure', async (req, res) => {
     try {
         if (ensureNetwork()) {

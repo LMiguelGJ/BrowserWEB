@@ -165,6 +165,7 @@ Todos los controles conservan su API HTTP:
 | `POST /api/screenshot` | Crear una captura manual |
 | `GET /api/screenshot` | Obtener la última captura manual guardada, no una imagen nueva |
 | `GET /api/status` | Consultar el estado |
+| `POST /api/network/request` | Reiniciar la búsqueda de salida de una sección (`{ "session": "s2" }`; solo en modo híbrido) |
 | `GET /api/sessions` | Listar secciones e indicar `default` y `max` |
 | `POST /api/sessions` | Crear una sección; acepta `{ "name": "Cuenta" }` opcional |
 | `DELETE /api/sessions/:id` | Cerrar una sección (no se puede cerrar la última) |
@@ -211,6 +212,7 @@ El tab **Red** del deck dice por dónde sale el navegador y qué IP está usando
 - **Última medición**: la IP medida y a qué hora. Con proxy rotativo la IP cambia en cada petición: lo que se muestra es siempre una foto, no una identidad.
 - **Secciones**: una fila por sección con su última IP medida. El botón **Medir ahora** consulta servicios gratuitos en una pestaña temporal del mismo contexto/proxy, sin depender de CSP/CORS del sitio abierto. La pestaña se cierra al terminar o fallar y nunca reemplaza el preview. Cada sección tiene un límite total de 15 segundos.
 - **Estado de medición**: `IP sin medir` si todavía no hay resultado; `Medición fallida` si la consulta falla. Si existe una IP anterior, queda identificada como `Última IP` con su hora, no como una medición nueva. Medir consume una pequeña cantidad de tráfico de la proxy; no comprueba la salud del video remoto.
+- **Botón «IP gratis»** (solo en modo híbrido): cada fila de sección lo tiene, y cada clic vuelve a iniciar el flujo para esa sección: primero busca una salida gratuita y, si el pool no da ninguna, prueba el respaldo. El botón queda deshabilitado mientras corre la búsqueda y la fila refleja el progreso. La sección conserva su nombre, sus cookies y su página: el cambio de salida se hace con una navegación GET, sin repetir clics ni envíos. Un reemplazo pedido a mano no se reporta al pool como avería, porque el proxy anterior no falló.
 
 Las credenciales nunca se muestran: solo el usuario.
 

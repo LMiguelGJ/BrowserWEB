@@ -157,6 +157,36 @@ test('the hybrid network panel names the provider without balance wording and wi
     assert.doesNotMatch(text, /user:|pw@/i);
 });
 
+test('the hybrid panel offers a small button to ask again for an IP per section', async () => {
+    const h = createScriptHarness({
+        network: {
+            mode: 'hybrid', pool: { status: 'empty' }, fallbackConfigured: true,
+            sections: [
+                { id: 's1', name: 'Una', provider: 'free', state: 'connected', ip: '8.8.4.4', port: 3128 },
+                { id: 's2', name: 'Dos', provider: null, state: 'waiting', reason: 'pool_empty', ip: null }
+            ]
+        }
+    });
+    await h.load();
+    await h.api().renderNetwork();
+    const body = h.elements.get('netBody');
+    const rows = body.children.filter(child => child.className === 'net-row net-section');
+    assert.equal(rows.length, 2, 'one row per section');
+    for (const row of rows) {
+        const button = row.children.find(child => child.tag === 'button');
+        assert.ok(button, 'each section row carries the small request button');
+        assert.equal(button.textContent, 'IP gratis');
+    }
+    // The click starts the search again, for that section and not for the active one.
+    rows[1].children.find(child => child.tag === 'button').dispatch('click');
+    await Promise.resolve();
+    const call = h.requestCalls.find(item => item.path === '/api/network/request');
+    assert.ok(call, 'the click asks the server to look for an exit again');
+    assert.equal(call.method, 'POST');
+    assert.equal(call.data.session, 's2', 'the request names the section of the button');
+    assert.equal(call.options.includeSession, false, 'the active session must not override the target');
+});
+
 test('the hybrid panel polls every five seconds only while open and cancels on close', async () => {
     const calls = [];
     const h = createScriptHarness({ network: path => {

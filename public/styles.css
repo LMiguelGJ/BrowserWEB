@@ -840,6 +840,31 @@ input[type="number"] {
     font-size: 13px;
 }
 
+.net-request {
+    flex: 0 0 auto;
+    margin-left: 10px;
+    padding: 2px 8px;
+    border: 1px solid var(--console-line);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--ink-mid);
+    font-family: var(--font-data);
+    font-size: 11px;
+    line-height: 1.5;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.net-request:hover:not(:disabled) {
+    color: var(--ink-hi);
+    border-color: var(--ink-low);
+}
+
+.net-request:disabled {
+    opacity: 0.55;
+    cursor: progress;
+}
+
 .net-actions {
     padding: 0 16px 16px;
 }

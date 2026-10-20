@@ -178,9 +178,32 @@ async function renderNetwork() {
         }
         ip.textContent = parts.length ? parts.join(' · ') : 'sin medir';
         line.append(name, ip);
+        if (data.mode === 'hybrid') {
+            // A small lever to start the search again for this section alone.
+            const request = document.createElement('button');
+            request.type = 'button';
+            request.className = 'net-request';
+            request.textContent = 'IP gratis';
+            request.title = 'Buscar otra salida para esta sección ahora';
+            request.addEventListener('click', () => requestFreeIp(section.id, request));
+            line.append(request);
+        }
         body.append(line);
     }
     return data;
+}
+
+// The operator asks for the flow to start again for one section: it looks for
+// a free exit first, and only then the paid fallback.
+async function requestFreeIp(sectionId, button) {
+    if (button) { button.disabled = true; button.textContent = 'buscando…'; }
+    try {
+        // The target section is explicit: the active session must not override it.
+        await pyrock.makeRequest('/api/network/request', 'POST', { session: sectionId }, { includeSession: false });
+    } catch (error) {
+        addLog(`No se pudo pedir una IP gratis: ${error.message}`, 'error');
+    }
+    await renderNetwork();
 }
 
 async function measureNetwork() {

@@ -29,7 +29,7 @@ function createHarness(serverUrl = 'http://localhost:3000', fetchImpl) {
 }
 
 function createScriptHarness({ sessions = [{ id: 's1', name: 'One', url: 'https://one.test' }], defaultId, max, storedId = null, onExecute, network } = {}) {
-  const elements = new Map(), listeners = new Map(), local = new Map(storedId ? [['pyrock.activeSession', storedId]] : []), operations = [], timers = [], clicks = [], presses = [], requests = [];
+  const elements = new Map(), listeners = new Map(), local = new Map(storedId ? [['pyrock.activeSession', storedId]] : []), operations = [], timers = [], clicks = [], presses = [], requests = [], requestCalls = [];
   let client, options;
   function element(tag = 'div') {
     const handlers = new Map(), attrs = new Map(), classes = new Set();
@@ -62,7 +62,7 @@ function createScriptHarness({ sessions = [{ id: 's1', name: 'One', url: 'https:
     async initBrowser(){operations.push(['restart',this.sessionId]);}
     async click(x,y){clicks.push({x,y});operations.push(['click',this.sessionId,x,y]);}
     async pressKey(key){presses.push(key);operations.push(['key',this.sessionId,key]);}
-    async makeRequest(path){requests.push(path);return networkResponse(path);}
+    async makeRequest(path, method, data, options){requests.push(path);requestCalls.push({path,method,data,options});return networkResponse(path);}
   }
   class FakeParser {
     constructor(pyRock, indicators){this.pyRock=pyRock;this.visualIndicators=indicators;this.commands=[];this.currentLine=0;}
@@ -73,6 +73,6 @@ function createScriptHarness({ sessions = [{ id: 's1', name: 'One', url: 'https:
     setTimeout(fn,delay){const t={fn,delay,cancelled:false};timers.push(t);return t;},clearTimeout(t){if(t)t.cancelled=true;},
     setInterval(fn,delay){const t={fn,delay,cancelled:false};intervalTimers.push(t);return t;},clearInterval(t){if(t)t.cancelled=true;},setImmediate};
   vm.runInNewContext(`${fs.readFileSync('public/script.js','utf8')}\nwindow.__testApi={refreshSessions,activateSession,addSessionInline,executeScript,initBrowser,showDiagnosis,showPreviewMode,renderNetwork,openNetworkPanel,togglePanel};`,context,{filename:'public/script.js'});
-  return {document,elements,window,context,operations,timers,intervals:intervalTimers,local,clicks,presses, get client(){return client;},get options(){return options;}, async load(){await window.dispatch('load');return options;}, api:()=>window.__testApi};
+  return {document,elements,window,context,operations,timers,intervals:intervalTimers,local,clicks,presses,requests,requestCalls, get client(){return client;},get options(){return options;}, async load(){await window.dispatch('load');return options;}, api:()=>window.__testApi};
 }
 module.exports={createHarness,createScriptHarness};
