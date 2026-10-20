@@ -106,6 +106,16 @@ test('the pool client reads how many proxies are left in the pool', async () => 
         baseUrl: 'http://127.0.0.1:8899', password: 'x', fetchImpl: async () => { throw new Error('ECONNREFUSED'); }
     });
     assert.equal(await down.count(), null, 'a pool that does not answer has no inventory to show');
+    // Some versions of the pool have no /count: its own status page answers.
+    const withoutCount = createPoolClient({
+        baseUrl: 'http://127.0.0.1:8899', password: 'x',
+        fetchImpl: async url => url.endsWith('/count')
+            ? jsonResponse(404, { message: 'not found' })
+            : jsonResponse(200, { http: 150, socks5: 162 })
+    });
+    const fallback = await withoutCount.count();
+    assert.equal(fallback.total, 312, 'the inventory comes from the status page');
+    assert.deepEqual(fallback.byType, { http: 150, socks5: 162 });
 });
 
 test('the pool client rejects what a section must never use', async () => {

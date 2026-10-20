@@ -64,40 +64,35 @@ function createPoolClient({ baseUrl, password = '', fetchImpl = fetch, timeoutMs
             }
             return { status: 'empty' };
         },
-        // How many proxies the pool still has, by type. Only for showing: the
-        // shape of the answer is not guaranteed, so a number is taken wherever
-        // there is one and the breakdown is best effort.
+        // How many proxies the pool still has, by type. Only for showing, and
+        // only with a number that cannot be mistaken: the pool answers
+        // differently depending on the version, so a total is taken only from an
+        // explicit field or from a flat list of numbers. A wrong number is
+        // worse than none.
         async count() {
-            let body;
-            try {
-                const response = await request('/count', timeoutMs);
-                if (!response.ok) return null;
-                body = await response.json();
-            } catch { return null; }
-            if (!body || typeof body !== 'object') return null;
-            const numbers = {};
-            for (const [key, value] of Object.entries(body)) {
-                if (typeof value === 'number' && Number.isFinite(value)) numbers[key] = value;
-            }
-            const explicit = numbers.total ?? numbers.count;
-            const byType = {};
-            for (const [key, value] of Object.entries(numbers)) {
-                if (key === 'total' || key === 'count') continue;
-                byType[key] = value;
-            }
-            // The pool may answer with the totals grouped (by type, by country):
-            // the numbers inside the first group are the ones by type.
-            for (const value of Object.values(body)) {
-                if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
-                const inside = Object.entries(value).filter(([, item]) => typeof item === 'number' && Number.isFinite(item));
-                if (inside.length && !Object.keys(byType).length) {
-                    for (const [type, amount] of inside) byType[type] = amount;
-                    break;
+            for (const path of ['/count', '/__proxy-scraper/status']) {
+                let body;
+                try {
+                    const response = await request(path, timeoutMs);
+                    if (!response.ok) continue;
+                    body = await response.json();
+                } catch { continue; }
+                if (!body || typeof body !== 'object') continue;
+                const numbers = {};
+                for (const [key, value] of Object.entries(body)) {
+                    if (typeof value === 'number' && Number.isFinite(value)) numbers[key] = value;
                 }
+                const totalKey = ['total', 'count', 'size', 'available'].find(key => numbers[key] !== undefined);
+                const byType = {};
+                for (const [key, value] of Object.entries(numbers)) {
+                    if (key === totalKey) continue;
+                    byType[key] = value;
+                }
+                const total = totalKey ? numbers[totalKey] : Object.values(byType).reduce((sum, value) => sum + value, 0);
+                if (!Number.isFinite(total) || total <= 0) continue;
+                return { total, byType };
             }
-            const total = explicit ?? Object.values(byType).reduce((sum, value) => sum + value, 0);
-            if (!Number.isFinite(total) || total <= 0) return null;
-            return { total, byType };
+            return null;
         },
         // Feedback is best effort: a pool that cannot hear it must not break a section.
         async report(endpoint, ok) {
