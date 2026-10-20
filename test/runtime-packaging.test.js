@@ -27,8 +27,8 @@ test('Supervisor runs both services, waits for proxy-scraper first, and confines
     assert.match(config, /\[program:pyrock\]/);
     assert.match(config, /priority=10[\s\S]*?proxy-scraper|proxy-scraper[\s\S]*?priority=10/i);
     assert.match(config, /priority=20[\s\S]*?server\.js|server\.js[\s\S]*?priority=20/i);
-    assert.match(config, /proxy-scraper[\s\S]*--want 1000[\s\S]*-t 12[\s\S]*--serve[\s\S]*--serve-host 127\.0\.0\.1[\s\S]*--serve-refill 1/i);
-    assert.doesNotMatch(config, /--no-datacenter|--no-blocklisted|--recheck live/i, 'the quality filters that emptied the pool are gone');
+    assert.match(config, /proxy-scraper[\s\S]*--recheck live[\s\S]*--want 1000[\s\S]*-t 12[\s\S]*--serve[\s\S]*--serve-host 127\.0\.0\.1[\s\S]*--serve-refill 1/i);
+    assert.doesNotMatch(config, /--no-datacenter|--no-blocklisted/i, 'the quality filters that emptied the pool are gone');
     assert.doesNotMatch(config, /--serve-open|--serve-host\s+0\.0\.0\.0/);
     assert.match(config, /PROXY_SCRAPER_HOME="?\/app\/state\/data"?/);
     assert.match(config, /PROXY_SCRAPER_SERVE_PASSWORD/);

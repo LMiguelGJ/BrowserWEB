@@ -55,12 +55,12 @@ Relajar los filtros de calidad del pool de `proxy-scraper` y dejar que la app co
 - **How**: una sola línea, sin tocar el resto (loopback, Basic Auth, `PROXY_SCRAPER_HOME`, prioridades, `stopasgroup`/`killasgroup`):
 
 ```
-command=/app/.venv/bin/proxy-scraper --want 1000 -t 12 --serve --serve-host 127.0.0.1 --serve-refill 1
+command=/app/.venv/bin/proxy-scraper --recheck live --want 1000 -t 12 --serve --serve-host 127.0.0.1 --serve-refill 1
 ```
 
-  Cambios puntuales: se quitan `--recheck live`, `--no-datacenter`, `--no-blocklisted`; `--want 200` → `--want 1000`; se agrega `-t 12` (timeout por proxy, default 8 s); `--serve-refill 6` → `--serve-refill 1` (repuesto horario en vez de cada 6 h). Se conservan `--serve --serve-host 127.0.0.1` y la contraseña por Basic auth.
+  Cambios puntuales: se quitan `--no-datacenter` y `--no-blocklisted`; `--want 200` → `--want 1000`; se agrega `-t 12` (timeout por proxy, default 8 s); `--serve-refill 6` → `--serve-refill 1` (repuesto horario en vez de cada 6 h). Se conservan `--recheck live`, `--serve --serve-host 127.0.0.1` y la contraseña por Basic auth.
 
-  Consecuencia asumida: el arranque en frío pasa de ~28 s a una corrida completa de fuentes (minutos). El repuesto horario sigue alimentando el pool desde la lista viva.
+  Consecuencia asumida: el arranque en frío mantiene los ~28 s de la lista viva. El repuesto horario mantiene el pool alimentado.
 
 ### Archivo 2 — `src/network/proxy-pool.js`
 
@@ -117,6 +117,21 @@ command=/app/.venv/bin/proxy-scraper --want 1000 -t 12 --serve --serve-host 127.
 - [ ] Lint/diagnóstico: `node --check src/network/proxy-pool.js && node --check src/network/manager.js` y `git diff --check`
 - [ ] Prueba real de SOCKS en navegador (no mock): en la instancia desplegada, con el pool ya caliente, pedir un candidato SOCKS5 (`/pop?protocol=socks5&https=1`) y comprobar que Camoufox abre una página `https://` y que `src/network-ip.js` devuelve una IP pública distinta. Si no funciona, se revierte el Archivo 2 a HTTP y el pool sigue agrandado por los flags.
 - [ ] Aceptación (tras el redeploy del usuario): el log del contenedor muestra un pool con **≥ 400 hits** (antes 163) y `/api/network` trae `pool.count`; se crean **5 secciones** y las 5 muestran **IP públicas distintas** en `/api/network`; al menos una sección con salida `socks5://`.
+
+## Corrección posterior a la ejecución (evidencia del despliegue)
+
+El planylogram original quitaba `--recheck live` para que el pool recorriera las ~726 fuentes. Los dos logs del contenedor en producción desmintieron esa premisa:
+
+| Corrida | Candidatos | Funcionan | Con TLS | Guardados | Arranque |
+|---|---|---|---|---|---|
+| Lista viva (`--recheck live`) | 1.148 | 548 | **41** | 163 | ~28 s |
+| Barrido completo | 1.715 | 446 | **32** | 154 | minutos |
+
+El barrido grande encontró **menos** salidas con TLS (32 contra 41) y tardó mucho más en servir. Se restituyó `--recheck live`: el surtido utilizable lo limita el test de TLS (~41 por corrida, renovado cada hora), no el tamaño del barrido.
+
+Lo que sí resultó ser el cuello de botella oculto era el filtro `protocol=http` del cliente: de las ~41 salidas con TLS, el app solo podía tomar la parte HTTP. Por eso el soporte de SOCKS en `src/network/proxy-pool.js` es el cambio que multiplica las salidas usables.
+
+Efecto observado en producción tras desplegar la primera versión: con el pool en silencio (barrido en curso), el app preguntó 30 veces en 62,9 s (`unavailable: 30`), aguantó su plazo y cayó a DataImpulse como está diseñado. El reintento funcionó; el problema era que el pool no escuchaba.
 
 ## Out of Scope
 
