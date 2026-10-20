@@ -192,6 +192,17 @@ test('an empty pool falls back to DataImpulse with its sticky port', async () =>
     assert.equal(result.ip, '5.5.5.5');
 });
 
+test('a free-only request never reaches the paid fallback and keeps the exit the section has', async () => {
+    const kit = makeKit({ items: [], exits: { 'http://gw.example:10001': '5.5.5.5' }, fallbackEnv: PAID });
+    // The section is already leaving through a free exit.
+    kit.reservations.reserve('8.8.4.4', 's1', { provider: 'free' });
+    const result = await kit.assigner.assign('s1', { freeOnly: true, keepCurrent: true });
+    assert.equal(result.provider, null, 'a request for a free exit never uses the paid one');
+    assert.equal(result.reason, 'pool_empty');
+    assert.equal(kit.fallbackProbes, 0, 'the paid candidate was never measured');
+    assert.equal(kit.reservations.exitOf('s1'), '8.8.4.4', 'the section keeps the exit it was using');
+});
+
 test('an unavailable pool falls back and says why', async () => {
     const kit = makeKit({ exits: { 'http://gw.example:10001': '5.5.5.5' }, fallbackEnv: PAID });
     kit.pool.pop = async () => ({ status: 'unavailable', reason: 'unauthorized' });

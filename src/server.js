@@ -117,7 +117,7 @@ function scheduleRecoveryRetry(id, record) {
 // Replaces the exit of a section whose proxy stopped working, keeping its
 // identity, its cookies and storage and the page it was on. One recovery per
 // section at a time; closing the section or stopping the server cancels it.
-async function recoverSection(id, { manual = false } = {}) {
+async function recoverSection(id) {
     const net = ensureNetwork();
     const section = sessions.get(id);
     if (!net || !section || shuttingDown) return false;
@@ -134,9 +134,7 @@ async function recoverSection(id, { manual = false } = {}) {
             section.recovering = true;
             if (section.page) {
                 section.snapshot = mergeSnapshots(await captureSnapshot(section), section.snapshot);
-                // A manual request replaces a working exit on purpose: it is not a
-                // failure, so the pool must not retire that proxy.
-                if (!manual) await net.reportLoss(id);
+                await net.reportLoss(id);
                 await serializeMutation(() => sessions.suspend(id));
             }
             const assignment = await net.assign(id, { isCancelled: cancelled, recovering: true });
@@ -159,6 +157,38 @@ async function recoverSection(id, { manual = false } = {}) {
     recoveryJobs.add(job);
     job.finally(() => recoveryJobs.delete(job)).catch(() => {});
     return job;
+}
+const manualRequests = new Set();
+// The operator asks for a free exit for one section. The search runs while the
+// section keeps working: only when a free exit is found does the section move
+// to it, and the move keeps its cookies, its storage and its page. A request
+// that finds nothing leaves the section exactly as it was, and the panel says
+// why there was no free exit.
+async function requestFreeExit(id) {
+    const net = ensureNetwork();
+    const section = sessions.get(id);
+    if (!net || !section || shuttingDown) return false;
+    if (manualRequests.has(id)) return false;
+    manualRequests.add(id);
+    try {
+        const assignment = await net.assign(id, { isCancelled: () => shuttingDown, manual: true });
+        if (!assignment.provider) return false;
+        section.recovering = true;
+        try {
+            if (section.page) {
+                section.snapshot = mergeSnapshots(await captureSnapshot(section), section.snapshot);
+                await serializeMutation(() => sessions.suspend(id));
+            }
+            preassigned.set(id, assignment);
+            try { await serializeMutation(() => sessions.resume(id)); }
+            finally { preassigned.delete(id); }
+            await restoreSnapshot(section, section.snapshot);
+            return true;
+        } catch (error) {
+            log.warn(`No se pudo cambiar la salida de ${id}: ${error.message}`);
+            return false;
+        } finally { section.recovering = false; }
+    } finally { manualRequests.delete(id); }
 }
 const networkControl = {
     recover: recoverSection,
@@ -483,7 +513,7 @@ app.post('/api/network/request', (req, res) => {
         const id = req.body?.session;
         if (!id) return res.status(400).json({ success: false, error: 'Sección requerida' });
         if (!sessions.get(id)) return res.status(404).json({ success: false, error: 'Sección no encontrada' });
-        Promise.resolve(recoverSection(id, { manual: true })).catch(() => {});
+        Promise.resolve(requestFreeExit(id)).catch(() => {});
         res.json({ ...networkOverview(), requested: id });
     } catch (error) { apiError(res, error); }
 });

@@ -84,17 +84,21 @@ function createAssigner({
     }
 
     return {
-        async assign(sectionId, { isCancelled = () => false } = {}) {
+        async assign(sectionId, { isCancelled = () => false, freeOnly = false, keepCurrent = false } = {}) {
             const startedAt = now();
             // A section holds one exit: asking for a new one frees the previous.
-            reservations.release(sectionId);
+            // A request that must keep the current exit (the operator asked for
+            // another one) holds it until a new one is actually secured.
+            if (!keepCurrent) reservations.release(sectionId);
             const summary = { examined: 0 };
             const free = await searchFree(sectionId, isCancelled, summary);
             const done = result => ({ ...result, freeSearch: { ...summary, reason: free.reason || null, durationMs: now() - startedAt } });
-            if (free.cancelled) { reservations.release(sectionId); return done({ provider: null, reason: 'cancelled' }); }
+            if (free.cancelled) { if (!keepCurrent) reservations.release(sectionId); return done({ provider: null, reason: 'cancelled' }); }
             if (free.provider) return done({ ...free, reason: null });
+            // A request for a free exit stops here: it never reaches the paid one.
+            if (freeOnly) return done({ provider: null, reason: free.reason, freeReason: free.reason });
             const paid = await useFallback(sectionId, isCancelled);
-            if (paid.cancelled) { reservations.release(sectionId); return done({ provider: null, reason: 'cancelled' }); }
+            if (paid.cancelled) { if (!keepCurrent) reservations.release(sectionId); return done({ provider: null, reason: 'cancelled' }); }
             if (paid.provider) return done({ ...paid, reason: free.reason });
             return done({ provider: null, reason: paid.reason, freeReason: free.reason });
         },

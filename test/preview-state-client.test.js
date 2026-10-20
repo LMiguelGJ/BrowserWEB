@@ -187,6 +187,24 @@ test('the hybrid panel offers a small button to ask again for an IP per section'
     assert.equal(call.options.includeSession, false, 'the active session must not override the target');
 });
 
+test('the hybrid panel says when a free exit could not be found', async () => {
+    const h = createScriptHarness({
+        network: {
+            mode: 'hybrid', pool: { status: 'empty' }, fallbackConfigured: true,
+            sections: [
+                { id: 's1', name: 'Una', provider: 'dataimpulse', state: 'connected', ip: '5.5.5.5', port: 10002, freeRequest: { reason: 'pool_empty' } }
+            ]
+        }
+    });
+    await h.load();
+    await h.api().renderNetwork();
+    const body = h.elements.get('netBody');
+    const text = body.children.map(child => child.children.length
+        ? child.children.map(inner => inner.textContent).join(' ')
+        : child.textContent).join('\n');
+    assert.match(text, /sin IP gratis: pool_empty/, 'the panel says why there was no free exit');
+});
+
 test('the hybrid panel polls every five seconds only while open and cancels on close', async () => {
     const calls = [];
     const h = createScriptHarness({ network: path => {

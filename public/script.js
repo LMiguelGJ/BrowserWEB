@@ -168,6 +168,8 @@ async function renderNetwork() {
             const reason = section.reason || section.freeReason;
             if (reason && section.state !== 'connected') parts.push(`motivo: ${reason}`);
             if (section.reconnects) parts.push(`${section.reconnects} reconexiones`);
+            // The last manual request for a free exit, and why it found nothing.
+            if (section.freeRequest?.reason && section.provider) parts.push(`sin IP gratis: ${section.freeRequest.reason}`);
         } else {
             if (section.measurementError) parts.push('Medición fallida');
             if (section.ip) parts.push(section.measurementError ? `Última IP: ${section.ip}` : section.ip);

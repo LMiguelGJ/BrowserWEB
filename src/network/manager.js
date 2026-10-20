@@ -30,7 +30,7 @@ function createNetworkManager({ config, probe, env = process.env, fetchImpl, now
     const sections = new Map();
     const blank = () => ({
         state: 'waiting', provider: null, ip: null, proxy: null, endpoint: null, reason: null,
-        freeReason: null, freeSearch: null, since: null, reconnects: 0
+        freeReason: null, freeSearch: null, freeRequest: null, since: null, reconnects: 0
     });
     const entry = id => {
         if (!sections.has(id)) sections.set(id, blank());
@@ -38,11 +38,12 @@ function createNetworkManager({ config, probe, env = process.env, fetchImpl, now
     };
 
     return {
-        async assign(sectionId, { isCancelled, recovering = false } = {}) {
+        async assign(sectionId, { isCancelled, recovering = false, manual = false } = {}) {
             const current = entry(sectionId);
             const previousProvider = current.provider;
+            const previousState = current.state;
             Object.assign(current, { state: recovering ? 'recovering' : 'validating' });
-            const result = await assigner.assign(sectionId, { isCancelled });
+            const result = await assigner.assign(sectionId, { isCancelled, freeOnly: manual, keepCurrent: manual });
             if (result.provider) {
                 Object.assign(current, {
                     state: 'connected', provider: result.provider, ip: result.ip,
@@ -51,7 +52,18 @@ function createNetworkManager({ config, probe, env = process.env, fetchImpl, now
                     endpoint: result.provider === 'free' ? hostOf(result.proxy.server) : null,
                     reason: result.reason || null, freeReason: null, freeSearch: result.freeSearch,
                     since: new Date(now()).toISOString(),
-                    reconnects: current.reconnects + (recovering && previousProvider !== null ? 1 : 0)
+                    // A request from the operator is a decision, not a failed reconnection.
+                    reconnects: current.reconnects + (recovering && !manual && previousProvider !== null ? 1 : 0),
+                    freeRequest: manual ? { reason: null, at: new Date(now()).toISOString() } : current.freeRequest
+                });
+            } else if (manual) {
+                // A manual request that finds nothing changes nothing: the section keeps
+                // the exit it is using, and the panel learns why there was no free one.
+                Object.assign(current, {
+                    state: previousProvider ? previousState : 'waiting',
+                    freeReason: result.freeReason || result.reason || null,
+                    freeSearch: result.freeSearch,
+                    freeRequest: { reason: result.reason || result.freeReason || 'unknown', at: new Date(now()).toISOString() }
                 });
             } else {
                 Object.assign(current, {

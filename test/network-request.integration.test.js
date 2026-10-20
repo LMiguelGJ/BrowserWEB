@@ -58,6 +58,24 @@ test('the operator can ask again for an exit for a section, and the old proxy is
     assert.equal(open.length, 1, 'the section kept a single context, now on the new exit');
     assert.equal(open[0].options.proxy.server, 'http://1.1.1.1:3128');
 
+    // With the free pool empty, the manual request finds nothing: the section keeps
+    // the exit it has and does not move to the paid provider on its own.
+    process.env.PYROCK_PROXY = 'http://user:pw@gw.example:823';
+    process.env.PYROCK_PROXY_STICKY_BASE = '10000';
+    pool.queue.length = 0;
+    const before = { ...networkControl.view('s1') };
+    const emptyResponse = await postJson(base, '/api/network/request', { session: 's1' });
+    assert.equal(emptyResponse.status, 200);
+    // A new attempt, and one that is not searching anymore.
+    await waitFor(() => {
+        const view = networkControl.view('s1');
+        return view.freeRequest?.at && view.freeRequest.at !== before.freeRequest?.at && view.state !== 'validating';
+    }, 'the manual search never finished');
+    const after = networkControl.view('s1');
+    assert.deepEqual([after.ip, after.provider, after.state], [before.ip, before.provider, before.state], 'the section keeps the exit it was using');
+    assert.equal(after.reconnects, before.reconnects, 'a manual request is not a reconnection');
+    assert.equal(after.freeRequest.reason, 'pool_empty', 'the panel learns why there was no free exit');
+
     // A section that does not exist is refused, and so is a request without one.
     assert.equal((await postJson(base, '/api/network/request', { session: 'nope' })).status, 404);
     assert.equal((await postJson(base, '/api/network/request', {})).status, 400);
