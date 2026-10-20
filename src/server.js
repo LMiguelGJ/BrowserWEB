@@ -296,17 +296,24 @@ function getSection(id) {
     if (section.recovering) throw Object.assign(new Error('La sección está cambiando de salida de red; reintentá en unos segundos'), { status: 503 });
     return section;
 }
-// La navegación inicial: se carga en segundo plano, sin esperar a que la
-// página "se vea" (el ajuste). La sección queda lista de inmediato y, si el
-// operador navega mientras carga, su navegación cancela esta, que es lo
-// correcto: manda lo último que pidió el operador.
+// La navegación inicial: se carga en segundo plano y solo espera las
+// cabeceras de la respuesta ('commit'), no a que la página termine de
+// cargar. Así el sitio lento no aborta la carga ni deja la sección en
+// blanco: el preview se completa sola a medida que llega. La sección queda
+// lista de inmediato y, si el operador navega mientras carga, su navegación
+// cancela esta, que es lo correcto: manda lo último que pidió el operador.
 async function openStartPage(url, section) {
-    log.info(`Navegando a: ${url}`);
-    try {
-        const response = await section.page.goto(url, { waitUntil: 'domcontentloaded', timeout: startTimeout() });
-        if (response) log.info(`Respuesta HTTP: ${response.status()}`);
-    } catch (error) {
-        log.warn(`No se pudo abrir la página inicial: ${error.message}`);
+    for (let attempt = 1; attempt <= 2; attempt++) {
+        log.info(`Navegando a: ${url}`);
+        try {
+            const response = await section.page.goto(url, { waitUntil: 'commit', timeout: startTimeout() });
+            if (response) log.info(`Respuesta HTTP: ${response.status()}`);
+            return;
+        } catch (error) {
+            log.warn(`No se pudo abrir la página inicial (intento ${attempt}): ${error.message}`);
+            if (attempt === 2) return;
+            await new Promise(resolve => setTimeout(resolve, 3000));
+        }
     }
 }
 async function navigateToUrl(url, section, retryCount = 0) {

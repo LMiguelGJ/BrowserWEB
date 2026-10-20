@@ -57,6 +57,11 @@ function makePage(context, label = 'shot', url = 'https://example.test/') {
     page.goto = async (url) => {
         page.calls.push(['navigate', url]);
         const config = globalThis.__pyrockCamoufoxConfig || {};
+        // Optional seam: a navigation that fails, to test what happens when a
+        // page cannot be opened.
+        if (config.failGotoFor && String(url).includes(config.failGotoFor)) {
+            throw new Error(`navigation failed: ${url}`);
+        }
         const ip = config.ipFor ? config.ipFor(context.options, url) : '203.0.113.7';
         return { status: () => 200, statusText: () => 'OK', ok: () => true, text: async () => ip };
     };
