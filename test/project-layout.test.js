@@ -11,6 +11,16 @@ test('backend modules and examples have dedicated directories', () => {
     assert.ok(fs.existsSync(path.join(__dirname, '..', 'examples', 'simple_script.txt')));
 });
 
+test('the root keeps only entrypoints and manifests, without loose documents', () => {
+    const root = path.join(__dirname, '..');
+    for (const file of ['docs/DESIGN.md', 'docs/PRODUCT.md', 'examples/script.txt']) {
+        assert.ok(fs.existsSync(path.join(root, file)), file);
+    }
+    for (const file of ['DESIGN.md', 'PRODUCT.md', 'script.txt']) {
+        assert.ok(!fs.existsSync(path.join(root, file)), `${file} no longer sits loose in the root`);
+    }
+});
+
 test('the root entry preserves importability and the public web assets', async () => {
     process.env.PYROCK_CAMOUFOX_MODULE = path.join(__dirname, 'fixtures', 'fake-camoufox.js');
     process.env.PYROCK_PROXY = '';

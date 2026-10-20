@@ -43,7 +43,13 @@ PyRock/
 │   ├── network-ip.js           # Medición aislada de IP por sección
 │   ├── network/                # Pool, asignación, reservas y recuperación híbrida
 │   └── engines/camoufox.js     # Adaptador del motor Camoufox
+├── docs/                       # Referencias de producto y diseño
+│   ├── PRODUCT.md              # Alcance y decisiones de producto
+│   └── DESIGN.md               # Sistema visual y tokens del frontend
 ├── examples/                   # Scripts de ejemplo (no se ejecutan automáticamente)
+│   ├── simple_script.txt
+│   └── script.txt              # Guion histórico conservado intacto
+├── odd/tasks/                  # Registro de ejecución por tarea
 ├── ops/supervisord.conf        # Arranque de PyRock y proxy-scraper
 ├── scripts/                    # Herramientas de mantenimiento
 ├── server.js                   # Entrada compatible: node server.js / npm start
@@ -53,6 +59,8 @@ PyRock/
 ├── .dockerignore              # Archivos a ignorar en Docker
 └── README.md                  # Documentación del proyecto
 ```
+
+En la raíz solo quedan los puntos de entrada y manifiestos (`server.js`, `package.json`, `package-lock.json`, `Dockerfile`, `README.md` y los dos `.ignore`). El trabajo de investigación y las salidas locales viven en `research/`, que se conserva en disco y no se publica.
 
 ## 🚀 Instalación y Uso
 
@@ -255,14 +263,14 @@ Las pruebas de integración levantan un servidor temporal en loopback y navegado
 - `server.js` - Entrada compatible; exporta el mismo servidor sin arrancarlo al importarlo.
 - `src/` - Implementación del backend, incluyendo `server.js`, `sessions.js`, `screencast.js`, `humanize.js`, `network-ip.js` y `engines/camoufox.js`.
 - `public/` - Archivos estáticos del frontend; sus URLs no cambian.
-- `examples/simple_script.txt` - Ejemplo manual; revisar antes de ejecutar. `script.txt` se conserva intacto en la raíz.
+- `examples/simple_script.txt` - Ejemplo manual; revisar antes de ejecutar. `examples/script.txt` es el guion histórico, conservado intacto.
 - `test/` - Pruebas unitarias y de integración; `scripts/` contiene herramientas de mantenimiento.
-- `PRODUCT.md` y `DESIGN.md` - Referencias de producto y diseño; `.pi/plans/` y `odd/tasks/` conservan los planes e historial.
+- `docs/PRODUCT.md` y `docs/DESIGN.md` - Referencias de producto y diseño; `.pi/plans/` y `odd/tasks/` conservan los planes e historial.
 - `Dockerfile` - Única imagen; copia explícitamente manifiestos npm, entrada, `src/` y `public/`.
 - `.dockerignore` - Lista permitida de archivos de runtime; excluye secretos, tests, ejemplos y cachés del contexto de build.
-- `.gitignore` - Excluye dependencias, secretos, logs, cobertura, cachés y salidas locales (`.firecrawl/`, `.ruff_cache/`, `results/`, `temp/`) sin ocultar código, tests ni planes. Las plantillas saneadas `.env.example`/`.env.sample` sí pueden versionarse.
+- `.gitignore` - Excluye dependencias, secretos, logs, cobertura, cachés y salidas locales (`research/`, `.firecrawl/`, `.ruff_cache/`) sin ocultar código, tests ni planes. Las plantillas saneadas `.env.example`/`.env.sample` sí pueden versionarse.
 
-La reorganización no borra datos locales: `.env`, `.firecrawl/`, `.ruff_cache/`, `results/`, `temp/`, `node_modules/`, `.codegraph/`, `.pi/verification/` y cachés de herramientas se conservan en disco; las salidas locales se ignoran, no se publican. Se mantienen en raíz los documentos y el script versionado que aún tienen referencias históricas: `PRODUCT.md`, `DESIGN.md` y `script.txt`. No se eliminaron dependencias ni archivos por suposición.
+La reorganización no borra datos locales: `.env`, `research/`, `.firecrawl/`, `.ruff_cache/`, `node_modules/`, `.codegraph/`, `.pi/verification/` y cachés de herramientas se conservan en disco; las salidas locales se ignoran, no se publican. La investigación previa (`.firecrawl/`, `results/`, `temp/`) ahora vive bajo `research/`, y los documentos de producto y diseño bajo `docs/`, con el guion histórico en `examples/`. No se eliminaron dependencias ni archivos por suposición.
 
 ## 🛡️ Seguridad
 

@@ -45,8 +45,8 @@ test('Docker context explicitly includes ops while keeping tests, secrets and lo
 
 test('Git ignores local user outputs while preserving the existing secret rule', () => {
     const paths = [
-        '.firecrawl/cache.json', '.ruff_cache/cache.db', 'results/generated.json',
-        'temp/research/notes.md', '.env'
+        '.firecrawl/cache.json', '.ruff_cache/cache.db', 'research/results/generated.json',
+        'research/temp/notes.md', 'research/firecrawl/page.md', '.env'
     ];
     for (const artifact of paths) {
         const result = spawnSync('git', ['check-ignore', '--quiet', '--no-index', '--', artifact], {
