@@ -59,6 +59,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libswscale6 \
         libpostproc56 \
         python3 \
+        python3-venv \
+        supervisor \
         make \
         g++ \
     && rm -rf /var/lib/apt/lists/*
@@ -70,7 +72,17 @@ WORKDIR /app
 RUN groupadd --gid 1001 nodejs && useradd --uid 1001 --gid nodejs --create-home pyrock \
     && chown pyrock:nodejs /app
 USER pyrock
-ENV HOME=/home/pyrock
+ENV HOME=/home/pyrock \
+    PATH=/home/pyrock/.local/bin:/app/.venv/bin:${PATH}
+
+# Keep the proxy service isolated from the Node dependencies and pin its CLI.
+RUN curl -fsSL https://astral.sh/uv/install.sh -o /tmp/uv-install.sh \
+    && UV_INSTALL_DIR=/home/pyrock/.local/bin sh /tmp/uv-install.sh \
+    && rm /tmp/uv-install.sh \
+    && uv venv /app/.venv \
+    && uv pip install --python /app/.venv/bin/python proxy-scraper-cli==1.30.0 \
+    && mkdir -p /app/state/data \
+    && chown -R pyrock:nodejs /app/.venv /app/state
 
 COPY --chown=pyrock:nodejs package.json package-lock.json ./
 # El Chromium de Puppeteer no hace falta (ya es sólo dependencia de desarrollo).
@@ -86,10 +98,15 @@ RUN npx camoufox-js fetch
 COPY --chown=pyrock:nodejs server.js ./
 COPY --chown=pyrock:nodejs src/ ./src/
 COPY --chown=pyrock:nodejs public/ ./public/
+COPY --chown=pyrock:nodejs ops/ ./ops/
 
 ENV NODE_ENV=production \
-    CAMOUFOX_HEADLESS=virtual
+    CAMOUFOX_HEADLESS=virtual \
+    PYROCK_PROXY_MODE=hybrid \
+    PYROCK_PROXY_POOL_URL=http://127.0.0.1:8899 \
+    PYROCK_FREE_SEARCH_TIMEOUT_MS=60000 \
+    PROXY_SCRAPER_SERVE_PASSWORD=
 
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+CMD ["supervisord", "-c", "/app/ops/supervisord.conf"]

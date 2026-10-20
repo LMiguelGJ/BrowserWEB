@@ -8,6 +8,8 @@
 !src/**
 !public/
 !public/**
+!ops/
+!ops/**
 
 # Local scratch files remain excluded even inside runtime directories.
 **/.env
