@@ -193,6 +193,7 @@ Hay **un proceso Camoufox compartido** y varias secciones independientes, cada u
 - `CAMOUFOX_OS` - Sistema operativo simulado en la huella (default: el del host)
 - `CAMOUFOX_LOCALE` - Locale de la huella (default: `es-ES`)
 - `PYROCK_PROXY_MODE` - `hybrid` activa la asignación free-first; la imagen Docker ya usa este modo por defecto. En ejecución local también hay que iniciar el pool por separado.
+- **Reparto de culpas con el pool**: un proxy gratuito solo se reporta al pool como avería cuando el navegador dice que el proxy rechazó la conexión (`NS_ERROR_PROXY_*`). Una medición lenta o un servicio de IP caído no acusan al proxy: hacerlo retiraba del pool proxies que sí funcionaban, y el pool da de baja un proxy tras tres reportes.
 - `PYROCK_PROXY_POOL_URL` - URL HTTP del pool; por seguridad debe apuntar a loopback. Default: `http://127.0.0.1:8899`; no se debe publicar el puerto 8899.
 - `PROXY_SCRAPER_SERVE_PASSWORD` - Contraseña Basic Auth del servicio pool. Configúrala con una clave larga y aleatoria.
 - `PYROCK_PROXY_POOL_PASSWORD` - Contraseña que PyRock envía en el header Basic Auth (`any:<contraseña>`). Debe coincidir con `PROXY_SCRAPER_SERVE_PASSWORD`; el cliente no imprime ni muestra el valor.
@@ -238,6 +239,8 @@ Las credenciales nunca se muestran: solo el usuario.
 El humanizador de Camoufox es de arranque y no admite desactivarse por petición, así que PyRock lo desactiva al lanzar el navegador y usa el suyo, que sí respeta `humanize: false`.
 
 ### Características Docker
+
+- **Supervisor sin socket de control**: los dos procesos se controlan con señales y logs. No se abre ningún socket de administración, así que no aparece un aviso de servicio sin autenticación.
 
 - **Camoufox headless** preinstalado (binario descargado en el build)
 - **proxy-scraper-cli 1.30.0** en un venv Python aislado

@@ -32,6 +32,7 @@ test('Supervisor runs both services, waits for proxy-scraper first, and confines
     assert.match(config, /PROXY_SCRAPER_HOME="?\/app\/state\/data"?/);
     assert.match(config, /PROXY_SCRAPER_SERVE_PASSWORD/);
     assert.match(config, /stopasgroup=true[\s\S]*killasgroup=true/i, 'SIGTERM stops the child process tree');
+    assert.doesNotMatch(config, /\[unix_http_server\]/, 'no control socket is opened without authentication');
 });
 
 test('Docker context explicitly includes ops while keeping tests, secrets and local data excluded', () => {

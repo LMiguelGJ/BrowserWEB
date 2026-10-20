@@ -129,7 +129,9 @@ function makeKit({ items = [], exits = {}, fallbackEnv = null, clock = null, opt
                 kit.probed.push(proxy.server);
                 if (proxy.username) kit.fallbackProbes++;
                 const outcome = typeof exits === 'function' ? await exits(proxy, timeoutMs) : exits[proxy.server];
-                if (outcome instanceof Error || outcome === undefined) throw outcome || new Error('no answer');
+                // A candidate that does not answer is a proxy that refused the
+                // connection: that is evidence, unlike a slow measurement.
+                if (outcome instanceof Error || outcome === undefined) throw outcome || new Error('NS_ERROR_PROXY_CONNECTION_REFUSED');
                 return outcome;
             } finally { kit.concurrent--; }
         },
@@ -150,10 +152,21 @@ test('a verified free proxy is used and DataImpulse is never touched', async () 
     assert.equal(kit.reservations.holder('8.8.4.4'), 's1');
 });
 
-test('a proxy that fails the browser measurement is reported and the next one is tried', async () => {
+test('a proxy that is only slow is not reported as broken', async () => {
     const kit = makeKit({
         items: [okItem('8.8.4.4'), okItem('1.1.1.1')],
-        exits: { 'http://8.8.4.4:3128': new Error('timeout'), 'http://1.1.1.1:3128': '1.1.1.1' }
+        exits: { 'http://8.8.4.4:3128': new Error('IP measurement timed out'), 'http://1.1.1.1:3128': '1.1.1.1' }
+    });
+    const result = await kit.assigner.assign('s1');
+    assert.equal(result.provider, 'free');
+    assert.equal(result.ip, '1.1.1.1');
+    assert.deepEqual(kit.reported, [], 'a slow measurement is not evidence against the proxy');
+});
+
+test('a proxy that refuses the connection is reported and the next one is tried', async () => {
+    const kit = makeKit({
+        items: [okItem('8.8.4.4'), okItem('1.1.1.1')],
+        exits: { 'http://8.8.4.4:3128': new Error('NS_ERROR_PROXY_CONNECTION_REFUSED'), 'http://1.1.1.1:3128': '1.1.1.1' }
     });
     const result = await kit.assigner.assign('s1');
     assert.equal(result.provider, 'free');

@@ -18,19 +18,26 @@ async function measureExitIp(context, { services = IP_SERVICES, timeoutMs = 1500
         }
         probe = page;
         probePages.add(page);
+        let lastError = null;
         for (const url of services) {
             if (expired) break;
             try {
                 const response = await page.goto(url, {
                     waitUntil: 'domcontentloaded',
-                    timeout: Math.max(1, Math.min(5000, deadline - Date.now()))
+                    // The whole remaining budget goes to this service: a slow
+                    // proxy deserves the chance, and the total is the bound.
+                    timeout: Math.max(1, deadline - Date.now())
                 });
                 if (!response?.ok()) continue;
                 const ip = (await response.text()).trim();
                 if (isIP(ip)) return ip;
-            } catch { /* Try the next service within the same total deadline. */ }
+            } catch (error) {
+                // The reason travels with the failure: it tells a refused proxy
+                // apart from a slow service.
+                lastError = error;
+            }
         }
-        throw new Error('IP measurement failed');
+        throw new Error(`IP measurement failed${lastError?.message ? `: ${lastError.message}` : ''}`);
     })();
     try {
         return await Promise.race([

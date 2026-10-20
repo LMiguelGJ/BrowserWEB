@@ -23,10 +23,18 @@ function createLimiter(max) {
 // Gets an exit for one section: free proxies from the pool first, DataImpulse
 // only when that search ends without a usable and distinct exit. It never
 // returns a direct connection: with nothing usable the section waits.
+// Only the proxy is accused when the browser says the proxy failed. A slow
+// measuring service or a timeout is not evidence against it, and accusing a
+// working proxy would retire it from the pool after a few reports.
+function blamesProxy(error) {
+    const message = String(error?.message || '');
+    return /NS_ERROR_PROXY|ERR_PROXY|ECONNREFUSED|EHOSTUNREACH|ENETUNREACH/i.test(message);
+}
+
 function createAssigner({
     pool, fallback, reservations, probe,
     now = Date.now, freeDeadlineMs = 60000, fallbackDeadlineMs = 30000,
-    probeTimeoutMs = 8000, poolTimeoutMs = 5000, maxConcurrentProbes = 2,
+    probeTimeoutMs = 12000, poolTimeoutMs = 5000, maxConcurrentProbes = 2,
     poolRetryMs = 2000, wait = ms => new Promise(resolve => setTimeout(resolve, ms))
 }) {
     const limit = createLimiter(maxConcurrentProbes);
@@ -66,7 +74,12 @@ function createAssigner({
             const server = popped.proxy.server;
             let ip;
             try { ip = await measure({ server }, Math.min(probeTimeoutMs, Math.max(1, deadline - now()))); }
-            catch { await pool.report(popped.proxy.endpoint, false); continue; }
+            catch (error) {
+                // The pool retires a proxy after a few reports: only report it
+                // when the failure is the proxy's own.
+                if (blamesProxy(error)) await pool.report(popped.proxy.endpoint, false);
+                continue;
+            }
             if (isCancelled()) return { cancelled: true };
             if (!isPublicIp(ip)) { await pool.report(popped.proxy.endpoint, false); continue; }
             // A working proxy that duplicates another section's exit is not broken: it is just not usable here.
