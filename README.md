@@ -1,27 +1,28 @@
-# 🚀 PyRock - Automatización con Puppeteer y Docker
+# PyRock — navegador remoto por secciones con Camoufox
 
-**PyRock** es una aplicación de control remoto de navegador que utiliza **Puppeteer** para automatización web, **REST** para los controles y **WebSocket/CDP** para el preview en vivo. Permite controlar un navegador de forma remota a través de una interfaz web moderna, optimizada para ejecutarse en contenedores Docker.
+**PyRock** es una aplicación de control remoto de navegador basada en **Camoufox/Firefox**, con controles **REST** y preview en vivo por **WebSocket**. Cada sección conserva cookies y almacenamiento aislados; en Docker, una sola imagen ejecuta PyRock y el pool gratuito de `proxy-scraper`, con DataImpulse como respaldo opcional.
 
 ## ✨ Características
 
-- 🌐 **Control remoto de navegador** con Puppeteer
-- 📡 **Preview en vivo** por WebSocket con fotogramas CDP de Chrome
+- 🌐 **Control remoto de navegador** con Camoufox (Firefox)
+- 📡 **Preview en vivo** por WebSocket con frames de Firefox
 - 🖱️ **Control de mouse y teclado** desde la interfaz web
 - 📸 **Captura manual** por REST, sin polling automático de imágenes
-- 🎨 **Interfaz moderna y responsiva**
-- 🐳 **Optimizado para Docker** con Chrome headless
-- 🔄 **Recuperación automática** del navegador
-- 📋 **Monitoreo de salud** del navegador
-- 🛡️ **Configuración de seguridad** para contenedores
+- 🧩 **Secciones aisladas** con cookies y almacenamiento independientes
+- 🌍 **Proxy híbrido por sección**: pool gratuito primero, DataImpulse como respaldo
+- 🛟 **Recuperación acotada**: restaura navegación con GET, no repite acciones ni scripts
+- 🐳 **Una imagen Docker** para PyRock y `proxy-scraper`, coordinados por Supervisor
+- 🛡️ **Sin salida directa de emergencia** cuando no hay un proxy validado
 
 ## 🛠️ Tecnologías Utilizadas
 
-- **Node.js 18** - Runtime de JavaScript
+- **Node.js 22** - Runtime de JavaScript
 - **Express.js** - Framework web
-- **Puppeteer** - Automatización de navegadores Chrome
+- **Camoufox + Playwright** - Automatización del navegador Firefox
+- **proxy-scraper-cli 1.30.0** - Pool gratuito incluido en la imagen Docker
 - **WebSocket (ws)** - Comunicación bidireccional
 - **HTML5/CSS3/JavaScript** - Frontend moderno
-- **Docker** - Containerización con Chrome headless
+- **Docker + Supervisor** - Una imagen y dos procesos no-root
 
 ## 📂 Estructura del Proyecto
 
@@ -40,8 +41,10 @@ PyRock/
 │   ├── screencast.js           # Ciclo de vida y control de flujo del preview
 │   ├── humanize.js             # Movimiento y escritura humanizados
 │   ├── network-ip.js           # Medición aislada de IP por sección
+│   ├── network/                # Pool, asignación, reservas y recuperación híbrida
 │   └── engines/camoufox.js     # Adaptador del motor Camoufox
 ├── examples/                   # Scripts de ejemplo (no se ejecutan automáticamente)
+├── ops/supervisord.conf        # Arranque de PyRock y proxy-scraper
 ├── scripts/                    # Herramientas de mantenimiento
 ├── server.js                   # Entrada compatible: node server.js / npm start
 ├── test/                       # Pruebas unitarias y de integración local
@@ -65,16 +68,21 @@ PyRock/
    npm run docker:run
    ```
 
-3. **Abrir en el navegador**
-   ```
-   http://localhost:3000
-   ```
+La imagen inicia PyRock y `proxy-scraper` bajo Supervisor; el pool escucha solo en `127.0.0.1:8899` y no se publica al host. Para cargar la configuración privada sin copiar `.env` a la imagen y conservar el estado del pool, puede ejecutar:
+
+```bash
+docker run --rm -p 3000:3000 --env-file .env -v pyrock-state:/app/state pyrock
+```
+
+1. **Abrir en el navegador**
+   `http://localhost:3000`
 
 ### Opción 2: Ejecución Local
 
 #### Prerrequisitos
-- **Node.js** 18+ instalado
-- **Chrome/Chromium** instalado en el sistema
+- **Node.js** 22+ instalado
+- El binario de Camoufox descargado con `npx camoufox-js fetch`
+- Para usar `PYROCK_PROXY_MODE=hybrid` fuera de Docker, un pool `proxy-scraper` escuchando en loopback; `npm start` no inicia ese servicio
 
 #### Pasos de Instalación
 
@@ -119,7 +127,7 @@ PyRock/
    - Usa la cruz de flechas (↑ ← ↓ →) para mover el cursor o desplazarte
 
 4. **Preview y captura manual**
-   - Chrome emite fotogramas JPEG al visor cuando están disponibles; no se garantiza una tasa fija de FPS ni se transmite audio.
+   - Camoufox emite frames al visor cuando están disponibles; no se garantiza una tasa fija de FPS ni se transmite audio.
    - El visor conserva la imagen anterior al perder la conexión y muestra su estado de reconexión.
    - El botón de captura manual sigue solicitando una imagen nueva por REST.
 
@@ -127,7 +135,7 @@ PyRock/
    - Usa la barra izquierda para agregar secciones, cambiar entre ellas y cerrar una sección con confirmación. Siempre debe quedar al menos una sección abierta.
    - Cada sección tiene su propia página y cookies; los controles, el preview y el reinicio actúan sobre la sección seleccionada. Un script continúa en la sección donde empezó aunque cambies la selección.
    - Los nombres opcionales tienen entre 1 y 24 caracteres; el nombre inicial es `Sección N`. La selección activa se recuerda en este navegador web, pero las secciones viven solo en memoria del servidor y se pierden al reiniciarlo.
-   - Todas las secciones comparten un único proceso Chromium, así que comparten su CPU, memoria y dirección IP de red. El máximo predeterminado es 5 secciones; se configura con `MAX_SESSIONS` (valores aceptados: 1–10).
+   - Las secciones comparten el proceso Camoufox y sus recursos de CPU/memoria, pero mantienen contextos aislados. En modo híbrido, cada una recibe una salida pública verificada y distinta; si no hay una salida disponible, queda esperando y no se conecta directamente. El máximo predeterminado es 5 secciones; se configura con `MAX_SESSIONS` (valores aceptados: 1–10).
 
 6. **Registro y scripts (paneles laterales)**
    - Las pestañas 📋 y 📜 del borde derecho abren, deslizándose, el registro de actividad y el control de scripts.
@@ -156,7 +164,7 @@ Todos los controles conservan su API HTTP:
 
 Las rutas de control existentes aceptan `session` en el cuerpo JSON de las solicitudes POST o en la query de las GET. Si se omite, el servidor usa la sección predeterminada. Por ejemplo, `POST /api/navigate` con `{ "url": "https://example.com", "session": "s2" }` dirige la navegación a `s2`. El preview usa `/ws/preview?session=s2` para mostrar una sección concreta; sin `session`, muestra la predeterminada. El WebSocket usa el mismo puerto que HTTP: `ws://localhost:3000/ws/preview` en local y `wss://<dominio>/ws/preview` con HTTPS. El cliente deriva esta URL de `serverUrl`. No se expone el endpoint CDP de Chrome.
 
-Hay **un proceso Chromium compartido** y varias secciones independientes, cada una con su propio `BrowserContext` y página. Las cookies, el almacenamiento web y la caché están aislados entre secciones; CPU, memoria y dirección IP de red son compartidas. Las secciones se mantienen en memoria del servidor, no persisten tras reiniciarlo, y su cantidad máxima se controla con `MAX_SESSIONS` (predeterminado: 5; rango admitido: 1–10). Varios visores pueden observar una sección; cerrar un visor no cierra la sección ni el navegador. Cada visor confirma el renderizado y recibe el fotograma más reciente disponible, sin acumular una cola de imágenes. No hay capturas automáticas por REST como respaldo: si falla el streaming, la captura manual permanece disponible.
+Hay **un proceso Camoufox compartido** y varias secciones independientes, cada una con su propio `BrowserContext` y página. Las cookies, el almacenamiento web y la caché están aislados. En modo híbrido, el asignador reserva una IP pública verificada y distinta por sección; el pool gratuito se consulta primero y DataImpulse solo se intenta tras un resultado gratuito negativo. Si ambos caminos fallan, la sección queda esperando, nunca usa conexión directa. Las secciones se mantienen en memoria del servidor, no persisten tras reiniciarlo, y su cantidad máxima se controla con `MAX_SESSIONS` (predeterminado: 5; rango admitido: 1–10). Varios visores pueden observar una sección; cerrar un visor no cierra la sección ni el navegador. Cada visor confirma el renderizado y recibe el fotograma más reciente disponible, sin acumular una cola de imágenes. No hay capturas automáticas por REST como respaldo: si falla el streaming, la captura manual permanece disponible.
 
 ### Proxy y diagnóstico del preview
 
@@ -175,9 +183,14 @@ Hay **un proceso Chromium compartido** y varias secciones independientes, cada u
 - `CAMOUFOX_HEADLESS` - Modo del navegador: `true` (default), `false` o `virtual` (Xvfb, el que usa la imagen Docker)
 - `CAMOUFOX_OS` - Sistema operativo simulado en la huella (default: el del host)
 - `CAMOUFOX_LOCALE` - Locale de la huella (default: `es-ES`)
-- `PYROCK_PROXY` - Proxy para el navegador, por ejemplo `http://usuario:clave@host:puerto`. Hace que la IP de salida parezca la de una persona en vez de la de un centro de datos, que es lo que más pesa en la detección de bots. Las credenciales van en la URL completa. Ojo: Playwright sobre Chromium no admite autenticación SOCKS5, así que para Chromium usá `http://`; el motor de PyRock (Camoufox/Firefox) acepta ambos.
-  - Para que el navegador mantenga la **misma IP** en todas las peticiones (cookies de sesión, WebSockets de video, streams), usá un **puerto sticky** del rango 10000-20000 en lugar del puerto rotativo: la IP queda ligada a ese puerto y no hay que tocar el usuario. Un puerto rotativo reparte cada petición por una IP distinta y eso rompe las sesiones.
-- `PYROCK_PROXY_STICKY_BASE` - Puerto base del rango sticky (10000-20000). Con esta variable cada sección usa su propio puerto (`base + número de sección`), y por lo tanto **su propia IP fija** durante ~30 minutos. La salida de las IP se ve en el tab **Red** del panel.
+- `PYROCK_PROXY_MODE` - `hybrid` activa la asignación free-first; la imagen Docker ya usa este modo por defecto. En ejecución local también hay que iniciar el pool por separado.
+- `PYROCK_PROXY_POOL_URL` - URL HTTP del pool; por seguridad debe apuntar a loopback. Default: `http://127.0.0.1:8899`; no se debe publicar el puerto 8899.
+- `PROXY_SCRAPER_SERVE_PASSWORD` - Contraseña Basic Auth del servicio pool. Configúrala con una clave larga y aleatoria.
+- `PYROCK_PROXY_POOL_PASSWORD` - Contraseña que PyRock envía en el header Basic Auth (`any:<contraseña>`). Debe coincidir con `PROXY_SCRAPER_SERVE_PASSWORD`; el cliente no imprime ni muestra el valor.
+- `PYROCK_FREE_SEARCH_TIMEOUT_MS` - Tiempo máximo para encontrar/validar una salida gratuita antes de probar el respaldo. Default `60000`; rango válido `10000`–`300000`.
+- `PYROCK_PROXY` - En modo híbrido, plantilla del proxy DataImpulse de respaldo, por ejemplo `http://usuario:clave@host:puerto`. Sus credenciales deben llegar por entorno/`.env`, nunca dentro de la imagen ni del repositorio.
+- `PYROCK_PROXY_STICKY_BASE` - Puerto sticky base de DataImpulse (10000–20000). Cada sección calcula su puerto a partir de su ID; no usa el puerto rotativo. DataImpulse solo se intenta tras un resultado gratuito negativo; si no está configurado o falla, la sección espera sin salir directamente.
+- El pool público gratuito es de terceros: no introduzcas contraseñas, datos personales ni información sensible en sitios visitados a través de esas salidas.
 - `PYROCK_GEOIP` - Con `1`, la geolocalización de la huella (latitud, longitud, zona horaria) se calcula a partir de la IP del proxy, para que no se contradiga. `camoufox-js` avisa cuando se usa un proxy sin esto.
 - `PYROCK_BLOCK_ADS` - Con `1`, se cortan las peticiones a redes de anuncios, consent y analítica. Una página que espera a uno de esos scripts puede quedarse en su pantalla de carga; algunos de ellos (un challenge de Cloudflare servido por una red de anuncios) incluso nunca resuelven. Está desactivado por defecto porque hay sitios que necesitan su script de consent para arrancar.
 - `PYROCK_SETTLE_TIMEOUT_MS` - Cuánto espera el servidor a que la página *se vea* (documento listo y con contenido) antes de responder. Default `20000`. Si se agota, la navegación responde con éxito pero `settled: false` y el estado real de la página, y el panel lo muestra.
@@ -186,7 +199,7 @@ Hay **un proceso Chromium compartido** y varias secciones independientes, cada u
 
 El tab **Red** del deck dice por dónde sale el navegador y qué IP está usando cada sección:
 
-- **Proxy**: host y puerto configurados, con el modo a la vista (`rotativo` o `sticky`).
+- **Proveedor y estado**: indica si la sección usa `proxy-scraper` gratuito, DataImpulse o está esperando; expone motivo y búsqueda gratuita sin mostrar credenciales. `/api/network` y `/health` incluyen el estado híbrido.
 - **Última medición**: la IP medida y a qué hora. Con proxy rotativo la IP cambia en cada petición: lo que se muestra es siempre una foto, no una identidad.
 - **Secciones**: una fila por sección con su última IP medida. El botón **Medir ahora** consulta servicios gratuitos en una pestaña temporal del mismo contexto/proxy, sin depender de CSP/CORS del sitio abierto. La pestaña se cierra al terminar o fallar y nunca reemplaza el preview. Cada sección tiene un límite total de 15 segundos.
 - **Estado de medición**: `IP sin medir` si todavía no hay resultado; `Medición fallida` si la consulta falla. Si existe una IP anterior, queda identificada como `Última IP` con su hora, no como una medición nueva. Medir consume una pequeña cantidad de tráfico de la proxy; no comprueba la salud del video remoto.
@@ -216,10 +229,11 @@ El humanizador de Camoufox es de arranque y no admite desactivarse por petición
 ### Características Docker
 
 - **Camoufox headless** preinstalado (binario descargado en el build)
-- **Usuario no-root** para seguridad
-- **Optimizaciones** para contenedores
-- **Recuperación automática** del navegador
-- **Monitoreo de salud** integrado
+- **proxy-scraper-cli 1.30.0** en un venv Python aislado
+- **Supervisor** gestiona ambos procesos; la imagen se ejecuta como `pyrock` no-root
+- Pool en `127.0.0.1:8899`; solo se expone el puerto de PyRock `3000`
+- Estado de proxy-scraper en `/app/state` (volumen opcional)
+- **Recuperación por sección** y monitoreo de salud
 
 ## 🔧 Desarrollo
 
@@ -246,14 +260,17 @@ Las pruebas de integración levantan un servidor temporal en loopback y navegado
 - `PRODUCT.md` y `DESIGN.md` - Referencias de producto y diseño; `.pi/plans/` y `odd/tasks/` conservan los planes e historial.
 - `Dockerfile` - Única imagen; copia explícitamente manifiestos npm, entrada, `src/` y `public/`.
 - `.dockerignore` - Lista permitida de archivos de runtime; excluye secretos, tests, ejemplos y cachés del contexto de build.
-- `.gitignore` - Ignora dependencias, secretos, logs, cobertura y cachés locales sin ocultar código, tests ni planes. Las plantillas saneadas `.env.example`/`.env.sample` sí pueden versionarse.
+- `.gitignore` - Excluye dependencias, secretos, logs, cobertura, cachés y salidas locales (`.firecrawl/`, `.ruff_cache/`, `results/`, `temp/`) sin ocultar código, tests ni planes. Las plantillas saneadas `.env.example`/`.env.sample` sí pueden versionarse.
 
-La reorganización no elimina datos locales: `.env`, `node_modules/`, `.codegraph/`, `.pi/verification/` y cachés de herramientas se conservan en disco. No se eliminaron dependencias ni archivos históricos por suposición.
+La reorganización no borra datos locales: `.env`, `.firecrawl/`, `.ruff_cache/`, `results/`, `temp/`, `node_modules/`, `.codegraph/`, `.pi/verification/` y cachés de herramientas se conservan en disco; las salidas locales se ignoran, no se publican. Se mantienen en raíz los documentos y el script versionado que aún tienen referencias históricas: `PRODUCT.md`, `DESIGN.md` y `script.txt`. No se eliminaron dependencias ni archivos por suposición.
 
 ## 🛡️ Seguridad
 
 - Ejecución con usuario no-root en Docker
-- Configuración segura de Chrome/Puppeteer
+- Camoufox y servicios Docker se ejecutan como usuario no-root
+- `.env` y secretos quedan fuera del contexto de imagen; se inyectan en runtime
+- El pool no escucha en interfaces públicas y no se expone el puerto 8899
+- Proxies gratuitos de terceros: no usar para cuentas o datos sensibles
 - Validación de URLs y parámetros
 - Manejo de errores robusto
 

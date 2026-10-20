@@ -1,0 +1,38 @@
+# Proxy híbrida por sección (proxy-scraper gratis, DataImpulse de respaldo) — ODD execution
+
+Objetivo: aplicar `.pi/plans/reemplazo-dataimpulse-proxy-pool.md` (revisión 2). Baseline `1ecf608` en `main`.
+Entrega: usuario autorizó implementar, ordenar el repositorio y crear commit(s) con push; sin PR ni despliegue. Runner: `npm test`.
+
+## Specs
+
+S1. Petición del usuario (verbatim): ".pi/plans/reemplazo-dataimpulse-proxy-pool.md vamos aplica el plan tal cual ahora con odd y modo yolo".
+S2. Plan, Summary: un proxy público verificado con TLS y salida propia por sección desde la API de pool de proxy-scraper; solo si no hay salida válida y distinta dentro del plazo, DataImpulse con puerto sticky por sección; nunca conexión directa.
+S3. Plan, decisión 3-4: `/pop?protocol=http&https=1`, un proxy explícito por sección usado directamente como proxy del contexto; SOCKS excluido; sin servidor rotativo ni `session-NAME`.
+S4. Plan, decisión 5-7: autenticación Basic; la última palabra es la medición en el navegador con `src/network-ip.js`; tabla de reservas propia que garantiza salidas únicas entre secciones y proveedores; `/report?proxy=IP:PORT&ok=0` por cada fallo.
+S5. Plan, decisión 8: plazo gratuito de 60 s (`PYROCK_FREE_SEARCH_TIMEOUT_MS`, entero entre 10 000 y 300 000), motivos `pool_empty`, `pool_unavailable`, `candidates_exhausted`, `deadline_exceeded`, `fallback_unavailable`, `fallback_failed`.
+S6. Plan, decisión 10 y 17: DataImpulse solo tras resultado gratuito negativo (3 puertos / 30 s); una sección pagada sana no migra a gratuita; si falla, ciclo gratuito nuevo; cerrar y crear empieza por gratuitas; cero tráfico pagado mientras haya salida gratuita.
+S7. Plan, decisión 11-14: recuperación con estado (cookies, localStorage, sessionStorage por origen, URL GET), 503 durante la recuperación, sin repetir POST ni clicks, sin resucitar secciones cerradas; guardia contra fugas directas y WebRTC.
+S8. Plan §4: health cada 120 s con jitter, 2 fallos confirman la pérdida; recuperación con espera 30/60/120/300 s; `/api/network` con `mode=hybrid`, proveedor, estado y motivo; `/health` distingue pool vacío de servicio caído.
+S9. Plan §1 y §5: panel Red con proveedor («Gratis» / «DataImpulse · consume saldo») y estado; servicio `proxy-scraper-cli==1.30.0` (sin extra `mcp`) y `supervisor` dentro de la misma imagen, solo en loopback.
+S10. Petición del usuario (verbatim): «al final debe elminar la basura organizar carpetas y archivos ignorar cosas en el github debes hacer que la / tenga menos archivos directorios y archivos suelto y al terminal commit and push».
+
+## Tasks
+
+T1 | S2-S6 | núcleo de red: reservas, cliente del pool, respaldo y asignador | done | `src/network/{ip,reservations,proxy-pool,proxy-fallback,assigner}.js`, `test/network-core.test.js` RED (módulos ausentes) → GREEN 20/20.
+T2 | S3,S7 | motor y sesiones: proveedor por sección y recuperación | done | `src/engines/camoufox.js`, `src/sessions.js`, `src/network/snapshot.js`; pruebas enfocadas e integración local GREEN.
+T3 | S8,S9 | health, API y panel | done | `src/network/proxy-health.js`, `src/network/manager.js`, `src/server.js`, `public/script.js`; pruebas enfocadas GREEN 33/33.
+T4 | S9 | empaquetado y documentación | done | Dockerfile/Supervisor/allowlist/README; test estructural 5/5. Build real se registra como limitación de T6: Docker CLI ausente.
+T5 | S10 | ordenar la raíz y limpiar/ignorar artefactos sin descartar datos del usuario | done | `.gitignore` y README; test `git check-ignore` incluido, 6/6.
+T6 | S1-S10 | verificación final después de ordenar | done | `npm test` 180/180; build de imagen y humo con dos procesos sin probar (sin runtime de contenedores).
+T7 | S10 | commits de trabajo y push autorizado | in_progress | Rama `feature/proxy-scraper-hybrid` desde `main`; no PR ni despliegue.
+
+## Log
+
+L1. Petición original del usuario, verbatim: ".pi/plans/reemplazo-dataimpulse-proxy-pool.md vamos aplica el plan tal cual ahora con odd y modo yolo".
+L2. Contrato del pool leído del código del propio proyecto (`proxyscraper/server/api.py`): vacío → `404` con `{"code":0,"src":"no proxy"}`; `/report` acepta `ok=0` y tres fallos seguidos retiran el proxy; `protocol` y `https` son filtros reales.
+L3. Decisión de implementación: el tope de 3 puertos del respaldo usa saltos de 50 (base + sección + 50·k) para no chocar con las secciones vecinas.
+L4. Pedido posterior del usuario, verbatim: «al final debe elminar la basura organizar carpetas y archivos ignorar cosas en el github debes hacer que la / tenga menos archivos directorios y archivos suelto y al terminal commit and push». Se incorpora como S10; se conserva `.env` y los resultados de investigación salvo instrucción más específica para borrarlos, y se hará commit/push no-forzado sin PR ni despliegue.
+L5. T4: `node --test test/runtime-packaging.test.js` GREEN 5/5; `git diff --check` exit 0 (solo avisos de LF→CRLF). `docker --version` exit 127 (`command not found`), por lo que no se afirma build/runtime. LSP activo sin errores accionables, con cobertura parcial: `.dockerignore` y Supervisor sin servidor y README inconcluso por timeout. La declaración requerida antes de delegar verificación independiente falló dos veces con `session messaging is not ready`; no se fabricó esa evidencia.
+L6. T5, inventario no destructivo: los 10 archivos versionados de raíz son manifiestos/entradas/documentación; `README.md` y registros históricos referencian `DESIGN.md`, `PRODUCT.md` y `script.txt` (además logs previos piden preservar `script.txt`). Se conservan esas rutas. `.env` ya está ignorado; `.firecrawl/`, `results/` y `temp/` son outputs locales sin ignore, y se preservan sin leer contenidos. Se añadirán patrones de ignore explícitos; no se moverán ni borrarán datos.
+L7. T5 completada: `.gitignore` agrega reglas ancladas para `.firecrawl/`, `.ruff_cache/`, `results/`, `temp/`; README aclara que se conservan en disco y no se publican. RED→GREEN: `node --test test/runtime-packaging.test.js` 6/6; `git diff --check` exit 0 (avisos LF→CRLF solamente); `git check-ignore -v` confirmó cada regla y `git status --short --ignored` mostró `.env` y los directorios presentes como ignorados. No se leyó ni borró su contenido.
+L8. T6 completada: `npm test` GREEN 180/180, 0 fallas, 35,3 s (incluye integración real con Chromium y la integración híbrida local). Limitaciones verificables del entorno: `docker`, `podman`, `buildah` y `nerdctl` no están instalados, por lo que no se afirma build de imagen ni arranque de los dos procesos; la verificación independiente delegada no pudo ejecutarse porque la sesión reportó `session messaging is not ready` dos veces, y no se sustituyó con evidencia inventada. Rama `feature/proxy-scraper-hybrid` creada desde `main` con identidad Git configurada.

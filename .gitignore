@@ -18,6 +18,12 @@ npm-debug.log*
 !.env.example
 !.env.sample
 
+# Local research/runtime outputs: preserve on disk, keep out of Git.
+/.firecrawl/
+/.ruff_cache/
+/results/
+/temp/
+
 # Editor/OS scratch files.
 /.idea/
 *.swp
