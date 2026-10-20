@@ -116,6 +116,17 @@ test('the pool client reads how many proxies are left in the pool', async () => 
     const fallback = await withoutCount.count();
     assert.equal(fallback.total, 312, 'the inventory comes from the status page');
     assert.deepEqual(fallback.byType, { http: 150, socks5: 162 });
+    // The status page can also group the totals; only the group that holds the
+    // inventory is read, never a counter of requests.
+    const grouped = createPoolClient({
+        baseUrl: 'http://127.0.0.1:8899', password: 'x',
+        fetchImpl: async url => url.endsWith('/count')
+            ? jsonResponse(404, { message: 'not found' })
+            : jsonResponse(200, { pool: { size: 548, http: 151, socks5: 354 }, counters: { requests: 12, failures: 0 } })
+    });
+    const groupedCount = await grouped.count();
+    assert.equal(groupedCount.total, 548);
+    assert.deepEqual(groupedCount.byType, { http: 151, socks5: 354 });
 });
 
 test('the pool client rejects what a section must never use', async () => {

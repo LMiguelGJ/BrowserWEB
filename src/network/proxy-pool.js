@@ -88,7 +88,24 @@ function createPoolClient({ baseUrl, password = '', fetchImpl = fetch, timeoutMs
                     if (key === totalKey) continue;
                     byType[key] = value;
                 }
-                const total = totalKey ? numbers[totalKey] : Object.values(byType).reduce((sum, value) => sum + value, 0);
+                let total = totalKey ? numbers[totalKey] : Object.values(byType).reduce((sum, value) => sum + value, 0);
+                // The status page groups the totals (the pool, the proxies by
+                // type): only the groups that can hold the inventory are read,
+                // so a counter of requests is never shown as a number of exits.
+                if (!totalKey) {
+                    for (const key of ['pool', 'proxies', 'byType', 'available', 'total']) {
+                        const group = body[key];
+                        if (!group || typeof group !== 'object' || Array.isArray(group)) continue;
+                        const inside = Object.entries(group).filter(([, item]) => typeof item === 'number' && Number.isFinite(item));
+                        if (!inside.length) continue;
+                        const groupTotal = ['total', 'count', 'size', 'available'].find(name => group[name] !== undefined);
+                        total = groupTotal ? group[groupTotal] : inside.reduce((sum, [, item]) => sum + item, 0);
+                        for (const [type, amount] of inside) {
+                            if (type !== groupTotal) byType[type] = amount;
+                        }
+                        break;
+                    }
+                }
                 if (!Number.isFinite(total) || total <= 0) continue;
                 return { total, byType };
             }
