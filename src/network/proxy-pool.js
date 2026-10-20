@@ -14,8 +14,44 @@ const POP_PATHS = [
 ];
 const SCHEMES = new Set(['http:', 'socks5:', 'socks4:']);
 
-function parseCandidate(body) {
-    let url;
+// The pool answers with the inventory in different shapes depending on the
+// version, and it also answers with counters (uptime, requests, failures). Only
+// the numbers that can be the inventory are read: a counter is never shown as
+// a number of exits.
+const COUNTER_KEY = /uptime|sticky|second|request|failure|error|byte|connection|counter|traffic|latency|elapsed|used|free_/i;
+const TOTAL_KEYS = ['total', 'count', 'size', 'available', 'proxies'];
+
+function readInventory(body) {
+    if (!body || typeof body !== 'object') return null;
+    // A group that can hold the inventory wins over the flat counters.
+    for (const value of Object.values(body)) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+        const groupTotal = TOTAL_KEYS.find(name => typeof value[name] === 'number' && Number.isFinite(value[name]));
+        const byType = {};
+        for (const [key, amount] of Object.entries(value)) {
+            if (typeof amount !== 'number' || !Number.isFinite(amount)) continue;
+            if (key === groupTotal || COUNTER_KEY.test(key)) continue;
+            byType[key] = amount;
+        }
+        const total = groupTotal ? value[groupTotal] : Object.values(byType).reduce((sum, amount) => sum + amount, 0);
+        if (Number.isFinite(total) && total > 0) return { total, byType };
+    }
+    // A flat answer: the numbers that are not counters are the types.
+    const flat = {};
+    for (const [key, amount] of Object.entries(body)) {
+        if (typeof amount !== 'number' || !Number.isFinite(amount)) continue;
+        if (COUNTER_KEY.test(key)) continue;
+        flat[key] = amount;
+    }
+    const totalKey = TOTAL_KEYS.find(name => typeof body[name] === 'number' && Number.isFinite(body[name]));
+    const byType = { ...flat };
+    if (totalKey) delete byType[totalKey];
+    const total = totalKey ? body[totalKey] : Object.values(byType).reduce((sum, amount) => sum + amount, 0);
+    if (!Number.isFinite(total) || total <= 0) return null;
+    return { total, byType };
+}
+
+function parseCandidate(body) {    let url;
     try { url = new URL(body?.url); } catch { return { status: 'invalid', reason: 'malformed' }; }
     const endpoint = typeof body?.proxy === 'string' ? body.proxy : `${url.hostname}:${url.port}`;
     const reject = reason => ({ status: 'invalid', reason, endpoint });
@@ -78,36 +114,8 @@ function createPoolClient({ baseUrl, password = '', fetchImpl = fetch, timeoutMs
                     body = await response.json();
                 } catch { continue; }
                 if (!body || typeof body !== 'object') continue;
-                const numbers = {};
-                for (const [key, value] of Object.entries(body)) {
-                    if (typeof value === 'number' && Number.isFinite(value)) numbers[key] = value;
-                }
-                const totalKey = ['total', 'count', 'size', 'available'].find(key => numbers[key] !== undefined);
-                const byType = {};
-                for (const [key, value] of Object.entries(numbers)) {
-                    if (key === totalKey) continue;
-                    byType[key] = value;
-                }
-                let total = totalKey ? numbers[totalKey] : Object.values(byType).reduce((sum, value) => sum + value, 0);
-                // The status page groups the totals (the pool, the proxies by
-                // type): only the groups that can hold the inventory are read,
-                // so a counter of requests is never shown as a number of exits.
-                if (!totalKey) {
-                    for (const key of ['pool', 'proxies', 'byType', 'available', 'total']) {
-                        const group = body[key];
-                        if (!group || typeof group !== 'object' || Array.isArray(group)) continue;
-                        const inside = Object.entries(group).filter(([, item]) => typeof item === 'number' && Number.isFinite(item));
-                        if (!inside.length) continue;
-                        const groupTotal = ['total', 'count', 'size', 'available'].find(name => group[name] !== undefined);
-                        total = groupTotal ? group[groupTotal] : inside.reduce((sum, [, item]) => sum + item, 0);
-                        for (const [type, amount] of inside) {
-                            if (type !== groupTotal) byType[type] = amount;
-                        }
-                        break;
-                    }
-                }
-                if (!Number.isFinite(total) || total <= 0) continue;
-                return { total, byType };
+                const inventory = readInventory(body);
+                if (inventory) return inventory;
             }
             return null;
         },
