@@ -42,11 +42,14 @@ test('the hybrid mode is opt in and its settings are validated', () => {
     }
 });
 
-function fakePool(proxies) {
+function fakePool(proxies, { count = { total: 312, http: 150, socks5: 162 } } = {}) {
     const queue = [...proxies];
     const reports = [];
     const fetchImpl = async url => {
         const target = new URL(url);
+        if (target.pathname === '/count') {
+            return { ok: true, status: 200, json: async () => count };
+        }
         if (target.pathname === '/pop') {
             const next = queue.shift();
             return next
@@ -106,6 +109,32 @@ test('a section without any exit waits with its reason and the pool status is vi
     assert.deepEqual([view.state, view.reason, view.freeReason], ['waiting', 'fallback_unavailable', 'pool_empty']);
     assert.equal(manager.summary().pool.status, 'empty');
     assert.equal(manager.summary().fallbackConfigured, false);
+});
+
+test('the manager publishes how many proxies the pool still has', async () => {
+    const pool = fakePool(['8.8.4.4:3128']);
+    const manager = createNetworkManager({
+        config: readNetworkConfig({ PYROCK_PROXY_MODE: 'hybrid' }), env: hybridEnv, fetchImpl: pool.fetchImpl,
+        probe: async () => '8.8.4.4'
+    });
+    await manager.assign('s1');
+    const summary = manager.summary();
+    assert.equal(summary.pool.status, 'ok');
+    assert.equal(summary.pool.count.total, 312);
+    assert.deepEqual(summary.pool.count.byType, { http: 150, socks5: 162 });
+});
+
+test('a pool that cannot be asked for its inventory publishes none', async () => {
+    const manager = createNetworkManager({
+        config: readNetworkConfig({ PYROCK_PROXY_MODE: 'hybrid' }), env: hybridEnv,
+        fetchImpl: async url => {
+            if (new URL(url).pathname === '/count') throw new Error('ECONNREFUSED');
+            return { ok: true, status: 200, json: async () => ({ proxy: '8.8.4.4:3128', url: 'http://8.8.4.4:3128', type: 'http' }) };
+        },
+        probe: async () => '8.8.4.4'
+    });
+    await manager.assign('s1');
+    assert.equal(manager.summary().pool.count, null, 'no inventory is better than a wrong one');
 });
 
 test('a recovery is counted as a reconnection', async () => {

@@ -227,6 +227,24 @@ test('the hybrid panel says why the free pool cannot answer', async () => {
     assert.match(ok.text, /ok/);
 });
 
+test('the hybrid panel shows how many proxies the pool still has', async () => {
+    const h = createScriptHarness({
+        network: {
+            mode: 'hybrid', pool: { status: 'ok', count: { total: 312, byType: { http: 150, socks5: 162 } } },
+            fallbackConfigured: true, sections: []
+        }
+    });
+    await h.load();
+    await h.api().renderNetwork();
+    const body = h.elements.get('netBody');
+    const row = body.children.find(child => child.className === 'net-row' && child.children[0]?.textContent === 'POOL GRATUITO');
+    assert.ok(row, 'the panel has a row for the free pool');
+    const text = row.children.map(inner => inner.textContent).join(' ');
+    assert.match(text, /312/, 'the operator sees how many exits are left');
+    assert.match(text, /http 150/);
+    assert.match(text, /socks5 162/);
+});
+
 test('the hybrid panel polls every five seconds only while open and cancels on close', async () => {
     const calls = [];
     const h = createScriptHarness({ network: path => {

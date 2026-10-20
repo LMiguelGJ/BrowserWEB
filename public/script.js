@@ -106,7 +106,14 @@ function closePanel() {
 // status travels in the tooltip, because 'unavailable' alone says nothing.
 function poolLabel(pool) {
     if (!pool) return 'sin estado';
-    if (pool.status === 'ok') return 'ok';
+    if (pool.status === 'ok') {
+        // How many exits are left, and of what kind: the answer to "how many
+        // IPs can I use right now".
+        const total = pool.count?.total;
+        if (!total) return 'ok';
+        const types = Object.entries(pool.count?.byType || {}).map(([type, value]) => `${type} ${value}`).join(' · ');
+        return types ? `ok · ${total} (${types})` : `ok · ${total}`;
+    }
     if (pool.status === 'empty') return 'vacío';
     if (pool.status === 'unavailable') {
         if (pool.reason === 'unreachable') return 'no responde';

@@ -15,10 +15,21 @@ function createNetworkManager({ config, probe, env = process.env, fetchImpl, now
     const reservations = createReservations();
     const pool = createPoolClient({ baseUrl: config.poolUrl, password: config.poolPassword, fetchImpl });
     let lastPool = { status: 'unknown', reason: null, at: null };
+    // How many proxies the pool still has, by type. It is only for showing, so
+    // it is read from time to time instead of on every candidate.
+    let poolCount = null;
+    let countReadAt = 0;
+    async function refreshCount() {
+        if (now() - countReadAt < 15000) return;
+        countReadAt = now();
+        const inventory = await pool.count();
+        if (inventory) poolCount = inventory;
+    }
     const tracked = {
         async pop(options) {
             const answer = await pool.pop(options);
             lastPool = { status: answer.status, reason: answer.reason || null, at: new Date(now()).toISOString() };
+            if (answer.status !== 'unavailable') await refreshCount();
             return answer;
         },
         report: (endpoint, ok) => pool.report(endpoint, ok)
@@ -98,7 +109,7 @@ function createNetworkManager({ config, probe, env = process.env, fetchImpl, now
         view(sectionId) { return { ...entry(sectionId) }; },
         summary() {
             return {
-                mode: 'hybrid', pool: { ...lastPool }, freeDeadlineMs: config.freeDeadlineMs,
+                mode: 'hybrid', pool: { ...lastPool, count: poolCount }, freeDeadlineMs: config.freeDeadlineMs,
                 fallbackConfigured: Boolean(fallbackCandidates('s1', env)),
                 reservations: reservations.snapshot().length
             };

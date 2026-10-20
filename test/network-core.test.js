@@ -61,12 +61,60 @@ test('the pool client tells an empty pool from an unavailable one', async () => 
     assert.equal((await make(async () => jsonResponse(500, {})).pop()).status, 'unavailable');
 });
 
+test('the pool client asks for HTTP first and falls back to SOCKS when the HTTP pool is empty', async () => {
+    const calls = [];
+    const pool = createPoolClient({
+        baseUrl: 'http://127.0.0.1:8899', password: 'x',
+        fetchImpl: async url => {
+            calls.push(url);
+            if (url.includes('protocol=http')) return jsonResponse(404, { code: 0, src: 'no proxy' });
+            return jsonResponse(200, { proxy: '1.1.1.1:1080', url: 'socks5://1.1.1.1:1080', type: 'socks5', https: true });
+        }
+    });
+    const answer = await pool.pop();
+    assert.equal(answer.status, 'ok');
+    assert.deepEqual(answer.proxy, { endpoint: '1.1.1.1:1080', server: 'socks5://1.1.1.1:1080' });
+    assert.equal(calls[0], 'http://127.0.0.1:8899/pop?protocol=http&https=1');
+    assert.equal(calls[1], 'http://127.0.0.1:8899/pop?protocol=socks5&https=1');
+});
+
+test('a SOCKS candidate keeps its scheme so the browser can use it', async () => {
+    const pop = body => createPoolClient({
+        baseUrl: 'http://127.0.0.1:8899', password: 'x', fetchImpl: async () => jsonResponse(200, body)
+    }).pop();
+    const socks5 = await pop({ proxy: '1.1.1.1:1080', url: 'socks5://1.1.1.1:1080', type: 'socks5' });
+    assert.equal(socks5.status, 'ok');
+    assert.equal(socks5.proxy.server, 'socks5://1.1.1.1:1080');
+    const socks4 = await pop({ proxy: '9.9.9.9:1080', url: 'socks4://9.9.9.9:1080', type: 'socks4' });
+    assert.equal(socks4.status, 'ok');
+    assert.equal(socks4.proxy.server, 'socks4://9.9.9.9:1080');
+});
+
+test('the pool client reads how many proxies are left in the pool', async () => {
+    const pool = createPoolClient({
+        baseUrl: 'http://127.0.0.1:8899', password: 'secret',
+        fetchImpl: async (url, options) => {
+            assert.equal(url, 'http://127.0.0.1:8899/count');
+            assert.equal(options.headers.authorization, `Basic ${Buffer.from('any:secret').toString('base64')}`);
+            return jsonResponse(200, { total: 312, http: 150, socks5: 162 });
+        }
+    });
+    const count = await pool.count();
+    assert.equal(count.total, 312);
+    assert.deepEqual(count.byType, { http: 150, socks5: 162 });
+    const down = createPoolClient({
+        baseUrl: 'http://127.0.0.1:8899', password: 'x', fetchImpl: async () => { throw new Error('ECONNREFUSED'); }
+    });
+    assert.equal(await down.count(), null, 'a pool that does not answer has no inventory to show');
+});
+
 test('the pool client rejects what a section must never use', async () => {
     const pop = body => createPoolClient({
         baseUrl: 'http://127.0.0.1:8899', password: 'x', fetchImpl: async () => jsonResponse(200, body)
     }).pop();
     for (const [name, body, reason] of [
-        ['socks', { proxy: '8.8.4.4:1080', url: 'socks5://8.8.4.4:1080', type: 'socks5' }, 'not_http'],
+        ['unknown scheme', { proxy: '8.8.4.4:1080', url: 'tor://8.8.4.4:1080', type: 'tor' }, 'unsupported_scheme'],
+        ['type that lies', { proxy: '8.8.4.4:1080', url: 'socks5://8.8.4.4:1080', type: 'http' }, 'type_mismatch'],
         ['private address', { proxy: '10.0.0.5:3128', url: 'http://10.0.0.5:3128', type: 'http' }, 'not_public'],
         ['loopback', { proxy: '127.0.0.1:3128', url: 'http://127.0.0.1:3128', type: 'http' }, 'not_public'],
         ['credentials', { proxy: '8.8.4.4:3128', url: 'http://user:pw@8.8.4.4:3128', type: 'http' }, 'credentials'],
