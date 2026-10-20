@@ -1,13 +1,20 @@
-node_modules
-npm-debug.log
-.git
-.gitignore
-README.md
-.env
-.nyc_output
-coverage
-.vscode
-.idea
-*.log
-.DS_Store
-Thumbs.db
+# Runtime allowlist: never send secrets, agent caches, tests or local browser
+# artifacts to the image build. Add new runtime directories here deliberately.
+**
+!package.json
+!package-lock.json
+!server.js
+!src/
+!src/**
+!public/
+!public/**
+
+# Local scratch files remain excluded even inside runtime directories.
+**/.env
+**/.env.*
+**/*.log
+**/*.swp
+**/*.swo
+**/*~
+**/.DS_Store
+**/Thumbs.db

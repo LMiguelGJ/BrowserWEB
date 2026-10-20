@@ -35,6 +35,7 @@
 'use strict';
 
 const { EventEmitter } = require('node:events');
+const { isIpProbe } = require('../network-ip');
 
 const FALLBACK_POLL_MS = 200;
 const DEFAULT_FRAME_SIZE = { width: 1366, height: 768 };
@@ -367,6 +368,7 @@ function createCamoufoxEngine({ loader = () => import('camoufox-js'), launchOpti
                     const originOf = url => { try { return new URL(url).origin; } catch { return null; } };
                     const waitForRealUrl = async target => {
                         for (let attempt = 0; attempt < 30; attempt++) {
+                            if (target.isClosed?.() || isIpProbe(target)) return null;
                             const current = target.url();
                             if (current && current !== 'about:blank') return current;
                             await new Promise(resolve => setTimeout(resolve, 100));
@@ -377,7 +379,7 @@ function createCamoufoxEngine({ loader = () => import('camoufox-js'), launchOpti
                         if (popup === raw) return;
                         (async () => {
                             const url = await waitForRealUrl(popup);
-                            if (!url) return; // stayed blank: nothing to follow
+                            if (!url || isIpProbe(popup)) return; // Internal probes never replace the preview.
                             const popupOrigin = originOf(url);
                             const mainOrigin = originOf(raw.url());
                             // Only the same site is followed: an advertisement or

@@ -1,11 +1,27 @@
-# Installed dependencies and local tooling artifacts.
+# Dependencies and generated test/build output.
 /node_modules/
-/.pi/verification/
+/coverage/
+/.nyc_output/
+*.log
+npm-debug.log*
+
+# Local agent/browser tooling; keep plans and ODD documents versionable.
+/.atl/
 /.codegraph/
+/.impeccable/
+/.playwright-cli/
+/.pi/verification/
 
-# Impeccable decision-page artifacts (tooling cache)
-.impeccable/
-.playwright-cli/
-
-# Local secrets and environment (never committed)
+# Local secrets; keep sanitized templates versionable.
 .env
+.env.*
+!.env.example
+!.env.sample
+
+# Editor/OS scratch files.
+/.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db

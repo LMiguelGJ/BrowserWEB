@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createSessionManager } = require('../sessions');
+const { createSessionManager } = require('../src/sessions');
 const { EventEmitter } = require('node:events');
 
 test('public sessions API lists default and creates isolated sections', async t => {

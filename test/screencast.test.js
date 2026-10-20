@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
-const { createScreencastController } = require('../screencast');
+const { createScreencastController } = require('../src/screencast');
 
 class FakeCDP extends EventEmitter {
     constructor() { super(); this.calls = []; }

@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { generateHumanPath, typeDelays } = require('../humanize');
+const { generateHumanPath, typeDelays } = require('../src/humanize');
 
 test('generateHumanPath walks intermediate points with real timing before the destination', () => {
     const { steps, totalMs } = generateHumanPath([100, 100], [600, 400], { seed: 12345 });
@@ -53,7 +53,7 @@ test('typeDelays returns jittered per-key delays when humanizing, zeros when off
 });
 
 test('generateHumanPath falls back to a synthetic walk if cursory is unavailable', () => {
-    const { generateHumanPath: fallbackPath } = require('../humanize');
+    const { generateHumanPath: fallbackPath } = require('../src/humanize');
     const { steps, totalMs } = fallbackPath([0, 0], [150, 150], { seed: 1, engine: 'fallback' });
     assert.ok(steps.length >= 3, 'fallback still walks, not teleports');
     assert.ok(totalMs > 0);

@@ -143,7 +143,9 @@ async function renderNetwork() {
         const ip = document.createElement('span');
         ip.className = 'net-value';
         const parts = [];
-        if (section.ip) parts.push(section.ip);
+        if (section.measurementError) parts.push('Medición fallida');
+        if (section.ip) parts.push(section.measurementError ? `Última IP: ${section.ip}` : section.ip);
+        else parts.push('IP sin medir');
         if (section.port) parts.push(`puerto ${section.port}`);
         if (section.measuredAt) parts.push(new Date(section.measuredAt).toLocaleTimeString());
         if (section.ipCount > 1) parts.push(`${section.ipCount} IPs distintas`);

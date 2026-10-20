@@ -28,6 +28,21 @@ test('the network answer says how the browser exits and which IP each section us
         assert.match(before.sections[0].proxy, /:10001$/, 'the first section uses the first sticky port');
         assert.equal(before.sections[0].port, 10001, 'the section reports its own port');
 
+        const context = fixture.currentState().contexts[0];
+        const activePage = fixture.currentState().pages[0];
+        // Simulate a site whose CSP rejects external fetch, while navigating
+        // a separate tab through the same context/proxy still works.
+        activePage.evaluate = async () => { throw new Error('CSP blocks fetch'); };
+        let probesClosed = 0;
+        let rejectProbes = false;
+        context.newPage = async () => ({
+            goto: async () => {
+                if (rejectProbes) throw new Error('connection failed');
+                return { ok: () => true, text: async () => '203.0.113.7\n' };
+            },
+            close: async () => { probesClosed++; }
+        });
+
         const measured = await (await fetch(`${base}/api/network/measure`, {
             method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}'
         })).json();
@@ -38,6 +53,17 @@ test('the network answer says how the browser exits and which IP each section us
 
         const after = await (await fetch(`${base}/api/network`)).json();
         assert.ok(after.sections.every(section => section.ip), 'the last measurement is kept');
+        assert.equal(probesClosed, 1, 'the temporary tab is closed after success');
+        assert.equal(activePage.closed, false, 'the active page is not closed');
+        rejectProbes = true;
+        const failedResponse = await fetch(`${base}/api/network/measure`, {
+            method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}'
+        });
+        assert.equal(failedResponse.status, 200);
+        const failed = await failedResponse.json();
+        assert.equal(failed.sections[0].measurementError, 'No se pudo medir la IP; intentá nuevamente.');
+        assert.equal(failed.sections[0].ip, '203.0.113.7', 'keep the last known IP explicitly marked as failed');
+        assert.equal(probesClosed, 2, 'the temporary tab is closed after failure too');
     } finally {
         await stopServer();
         for (const [key, value] of [['PYROCK_CAMOUFOX_MODULE', originalModule], ['PYROCK_PROXY', originalProxy], ['PYROCK_PROXY_STICKY_BASE', originalBase]]) {

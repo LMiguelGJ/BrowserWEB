@@ -82,7 +82,10 @@ RUN npm ci --omit=dev --no-audit --no-fund
 # Descarga del binario de Camoufox en el build (como el usuario de runtime).
 RUN npx camoufox-js fetch
 
-COPY --chown=pyrock:nodejs . .
+# Only runtime files enter the image; local tooling, tests and examples stay out.
+COPY --chown=pyrock:nodejs server.js ./
+COPY --chown=pyrock:nodejs src/ ./src/
+COPY --chown=pyrock:nodejs public/ ./public/
 
 ENV NODE_ENV=production \
     CAMOUFOX_HEADLESS=virtual

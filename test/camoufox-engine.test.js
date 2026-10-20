@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { EventEmitter } = require('node:events');
 
-const { wrapPage, createCamoufoxEngine, measurePage } = require('../engines/camoufox');
+const { wrapPage, createCamoufoxEngine, measurePage } = require('../src/engines/camoufox');
 
 function fakePlaywrightPage({ withScreencast = true, viewport = { width: 900, height: 600 } } = {}) {
     const calls = [];
@@ -226,7 +226,7 @@ test('the page console errors and failed requests reach the log', async () => {
 });
 
 test('diagnosePage explains a blank preview: a page stuck loading never ran its app', async () => {
-    const { diagnosePage } = require('../engines/camoufox');
+    const { diagnosePage } = require('../src/engines/camoufox');
     const page = fakePlaywrightPage();
     const diagnosis = await diagnosePage(page);
     assert.equal(diagnosis.readyState, 'complete');
@@ -254,7 +254,7 @@ test('the geolocation can be derived from the proxy IP so the fingerprint matche
 });
 
 test('the diagnosis names the requests that never finished, the usual cause of a blank page', async () => {
-    const { diagnosePage } = require('../engines/camoufox');
+    const { diagnosePage } = require('../src/engines/camoufox');
     const page = fakePlaywrightPage();
     page.pendingRequests = () => ['https://cdn.example/challenge.js'];
     const diagnosis = await diagnosePage(page);

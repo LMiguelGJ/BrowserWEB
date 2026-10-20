@@ -110,7 +110,9 @@ test('live preview preserves REST controls through navigation, reconnect and res
     await viewer.evaluate((url) => pyrock.navigate(url), `${base}/__test/fixture`);
     await viewer.waitForFunction(() => {
         const image = document.querySelector('#preview');
-        return image.complete && image.naturalWidth > 0 && image.naturalHeight > 0;
+        // The initial hidden GIF is already complete and 1x1: wait for an
+        // actual preview frame before asserting its coordinate dimensions.
+        return image.src.startsWith('data:image/jpeg') && image.complete && image.naturalWidth > 0 && image.naturalHeight > 0;
     });
     // The preview frame is the page's own CSS size: the client maps a click on the
     // image back to page coordinates through the image's pixel size, so the two

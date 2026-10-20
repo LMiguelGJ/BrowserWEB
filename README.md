@@ -34,9 +34,16 @@ PyRock/
 │   ├── PyRockHTTP.js           # Controles REST y conexión del preview
 │   ├── PyRockScriptParser.js   # Parser de scripts
 │   └── config.js               # URL del servidor y consulta de estado
-├── server.js                   # Servidor Express y WebSocket en el mismo puerto
-├── sessions.js                 # Secciones y contextos aislados del navegador
-├── screencast.js               # Ciclo de vida CDP y control de flujo del preview
+├── src/                        # Backend de la aplicación
+│   ├── server.js               # Servidor Express y WebSocket en el mismo puerto
+│   ├── sessions.js             # Secciones y contextos aislados del navegador
+│   ├── screencast.js           # Ciclo de vida y control de flujo del preview
+│   ├── humanize.js             # Movimiento y escritura humanizados
+│   ├── network-ip.js           # Medición aislada de IP por sección
+│   └── engines/camoufox.js     # Adaptador del motor Camoufox
+├── examples/                   # Scripts de ejemplo (no se ejecutan automáticamente)
+├── scripts/                    # Herramientas de mantenimiento
+├── server.js                   # Entrada compatible: node server.js / npm start
 ├── test/                       # Pruebas unitarias y de integración local
 ├── package.json                # Configuración de dependencias
 ├── Dockerfile                  # Configuración optimizada para Docker
@@ -181,7 +188,8 @@ El tab **Red** del deck dice por dónde sale el navegador y qué IP está usando
 
 - **Proxy**: host y puerto configurados, con el modo a la vista (`rotativo` o `sticky`).
 - **Última medición**: la IP medida y a qué hora. Con proxy rotativo la IP cambia en cada petición: lo que se muestra es siempre una foto, no una identidad.
-- **Secciones**: una fila por sección con su última IP medida. El botón **Medir ahora** pide la IP desde la página de cada sección, así que es la que vería el sitio.
+- **Secciones**: una fila por sección con su última IP medida. El botón **Medir ahora** consulta servicios gratuitos en una pestaña temporal del mismo contexto/proxy, sin depender de CSP/CORS del sitio abierto. La pestaña se cierra al terminar o fallar y nunca reemplaza el preview. Cada sección tiene un límite total de 15 segundos.
+- **Estado de medición**: `IP sin medir` si todavía no hay resultado; `Medición fallida` si la consulta falla. Si existe una IP anterior, queda identificada como `Última IP` con su hora, no como una medición nueva. Medir consume una pequeña cantidad de tráfico de la proxy; no comprueba la salud del video remoto.
 
 Las credenciales nunca se muestran: solo el usuario.
 
@@ -230,11 +238,17 @@ Las pruebas de integración levantan un servidor temporal en loopback y navegado
 
 ### Estructura de Archivos
 
-- `server.js` - Servidor principal y controles REST
-- `screencast.js` - Transmisión CDP y limpieza del preview
-- `public/` - Archivos estáticos del frontend
-- `Dockerfile` - Configuración optimizada para Docker
-- `.dockerignore` - Exclusiones para Docker build
+- `server.js` - Entrada compatible; exporta el mismo servidor sin arrancarlo al importarlo.
+- `src/` - Implementación del backend, incluyendo `server.js`, `sessions.js`, `screencast.js`, `humanize.js`, `network-ip.js` y `engines/camoufox.js`.
+- `public/` - Archivos estáticos del frontend; sus URLs no cambian.
+- `examples/simple_script.txt` - Ejemplo manual; revisar antes de ejecutar. `script.txt` se conserva intacto en la raíz.
+- `test/` - Pruebas unitarias y de integración; `scripts/` contiene herramientas de mantenimiento.
+- `PRODUCT.md` y `DESIGN.md` - Referencias de producto y diseño; `.pi/plans/` y `odd/tasks/` conservan los planes e historial.
+- `Dockerfile` - Única imagen; copia explícitamente manifiestos npm, entrada, `src/` y `public/`.
+- `.dockerignore` - Lista permitida de archivos de runtime; excluye secretos, tests, ejemplos y cachés del contexto de build.
+- `.gitignore` - Ignora dependencias, secretos, logs, cobertura y cachés locales sin ocultar código, tests ni planes. Las plantillas saneadas `.env.example`/`.env.sample` sí pueden versionarse.
+
+La reorganización no elimina datos locales: `.env`, `node_modules/`, `.codegraph/`, `.pi/verification/` y cachés de herramientas se conservan en disco. No se eliminaron dependencias ni archivos históricos por suposición.
 
 ## 🛡️ Seguridad
 
