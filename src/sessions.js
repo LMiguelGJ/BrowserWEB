@@ -1,6 +1,6 @@
 'use strict';
 
-function createSessionManager({ openPage, closeContext, createController, onClosed, maxSessions = 5 }) {
+function createSessionManager({ openPage, closeContext, createController, onClosed, onReady, maxSessions = 5 }) {
     if (typeof openPage !== 'function' || typeof closeContext !== 'function' || typeof createController !== 'function') {
         throw new TypeError('openPage, closeContext and createController are required');
     }
@@ -49,8 +49,8 @@ function createSessionManager({ openPage, closeContext, createController, onClos
         section.state = 'ready';
         return section;
     }
-    async function open(section) {
-        const opened = await openPage(section);
+    async function open(section, reason) {
+        const opened = await openPage(section, { reason });
         if (closed) {
             if (opened?.context) await closeContext(opened.context);
             throw Object.assign(new Error('Browser is shutting down'), { status: 503 });
@@ -67,6 +67,9 @@ function createSessionManager({ openPage, closeContext, createController, onClos
         });
         section.lastScreenshot = null;
         section.state = 'ready';
+        // The section is ready: whatever the app wants to do first (open the
+        // start page, for instance) happens now that there is a page to use.
+        await onReady?.(section, reason);
         return section;
     }
     // A listener that fails must never stop a section from closing.
@@ -88,7 +91,7 @@ function createSessionManager({ openPage, closeContext, createController, onClos
                 if (sessions.size >= limit) throw Object.assign(new Error('Límite de secciones alcanzado'), { status: 409 });
                 const number = nextId++;
                 const section = { id: `s${number}`, name: name === undefined ? `Sección ${number}` : name.trim(), context: null, page: null, controller: null, lastScreenshot: null, state: 'unavailable' };
-                await open(section);
+                await open(section, 'create');
                 sessions.set(section.id, section);
                 return section;
             });
@@ -120,7 +123,7 @@ function createSessionManager({ openPage, closeContext, createController, onClos
             return serialize(async () => {
                 const section = get(id);
                 if (!section) throw Object.assign(new Error('Sección no encontrada'), { status: 404 });
-                return open(section);
+                return open(section, 'resume');
             });
         },
         async restart(id) {
@@ -130,7 +133,7 @@ function createSessionManager({ openPage, closeContext, createController, onClos
                 await dispose(section, { closeController: false });
                 section.context = section.page = null;
                 section.state = 'unavailable';
-                return open(section);
+                return open(section, 'restart');
             });
         },
         async restartAll() {
@@ -141,7 +144,7 @@ function createSessionManager({ openPage, closeContext, createController, onClos
                     section.context = section.page = null;
                     section.state = 'unavailable';
                 }
-                for (const section of existing) await open(section);
+                for (const section of existing) await open(section, 'restart');
                 return true;
             });
         },

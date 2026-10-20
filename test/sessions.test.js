@@ -47,10 +47,13 @@ test('public sessions API lists default and creates isolated sections', async t 
     const unknown = await fetch(`${base}/api/click`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ x: 1, y: 2, session: 'missing' }) });
     assert.equal(unknown.status, 404);
     assert.deepEqual(await unknown.json(), { success: false, error: 'Sección no encontrada' });
-    const click = await fetch(`${base}/api/click`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ x: 3, y: 4, session: second.id }) });
+    // A target far enough that the humanized path always has intermediate
+    // steps: over a five-pixel move the recorded path can collapse to the
+    // destination alone, and then there is no walk to observe.
+    const click = await fetch(`${base}/api/click`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ x: 300, y: 400, session: second.id }) });
     assert.equal(click.status, 200);
     // The click is humanized: the cursor walks to the target before pressing.
-    assert.deepEqual(pages[1].calls.at(-1), ['click', 3, 4], 'the click lands on the requested coordinates');
+    assert.deepEqual(pages[1].calls.at(-1), ['click', 300, 400], 'the click lands on the requested coordinates');
     assert.ok(pages[1].calls.some(call => call[0] === 'move'), 'the cursor walks before clicking');
     assert.ok(pages[1].calls.findIndex(call => call[0] === 'move') < pages[1].calls.findIndex(call => call[0] === 'click'), 'the walk happens before the click');
     await fetch(`${base}/api/click`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ x: 8, y: 9 }) });
@@ -58,9 +61,12 @@ test('public sessions API lists default and creates isolated sections', async t 
     await fetch(`${base}/api/key`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key: 'Enter', session: second.id }) });
     await fetch(`${base}/api/navigate`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url: 'https://example.test/', session: second.id }) });
     assert.deepEqual(pages[0].calls.at(-1), ['click', 8, 9], 'omitted session routes to the default section');
+    const typedCalls = pages[1].calls.filter(call => call[0] !== 'move');
+    const startCall = typedCalls.findIndex(call => call[0] === 'navigate' && call[1] === 'https://browser.lol/');
+    assert.ok(startCall >= 0, 'the section opened on the start page');
     assert.deepEqual(
-        pages[1].calls.filter(call => call[0] !== 'move'),
-        [['click', 3, 4], ...Array.from('hello', (ch) => ['type', ch]), ['key', 'Enter'], ['navigate', 'https://example.test/']],
+        typedCalls.filter((_, index) => index !== startCall),
+        [['click', 300, 400], ...Array.from('hello', (ch) => ['type', ch]), ['key', 'Enter'], ['navigate', 'https://example.test/']],
         'humanized typing reaches the page per character, in order'
     );
     const capture = await fetch(`${base}/api/screenshot`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ session: second.id }) });

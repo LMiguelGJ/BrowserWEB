@@ -122,6 +122,7 @@ docker run --rm -p 3000:3000 --env-file .env -v pyrock-state:/app/state pyrock
 - La sección **sigue las pestañas que abre la web**: si un sitio abre un enlace en otra pestaña (por ejemplo, un link de sesión), la sección pasa a previsualizar esa pestaña en lugar de quedarse en la que la abrió
 
 1. **Navegación**
+   - Cada sección nueva abre en `https://browser.lol/` (o en `PYROCK_START_URL`), no en una pestaña vacía
    - Ingresa una URL en el campo de texto
    - Haz clic en "Navegar" para ir a la página
 
@@ -205,6 +206,7 @@ Hay **un proceso Camoufox compartido** y varias secciones independientes, cada u
 - `PYROCK_GEOIP` - Con `1`, la geolocalización de la huella (latitud, longitud, zona horaria) se calcula a partir de la IP del proxy, para que no se contradiga. `camoufox-js` avisa cuando se usa un proxy sin esto.
 - `PYROCK_BLOCK_ADS` - Con `1`, se cortan las peticiones a redes de anuncios, consent y analítica. Una página que espera a uno de esos scripts puede quedarse en su pantalla de carga; algunos de ellos (un challenge de Cloudflare servido por una red de anuncios) incluso nunca resuelven. Está desactivado por defecto porque hay sitios que necesitan su script de consent para arrancar.
 - `PYROCK_SETTLE_TIMEOUT_MS` - Cuánto espera el servidor a que la página *se vea* (documento listo y con contenido) antes de responder. Default `20000`. Si se agota, la navegación responde con éxito pero `settled: false` y el estado real de la página, y el panel lo muestra.
+- `PYROCK_START_URL` - Página en la que abre cada sección nueva. Default `https://browser.lol/`. Solo se aceptan URLs `http`/`https`; un valor que no sea una página se ignora y se usa el default. Con `off` no se abre ninguna página inicial. La navegación sale por el proxy de esa sección, como cualquier otra, y una sección recuperada vuelve a la página que tenía en vez de a esta.
 
 ### El tab "Red"
 

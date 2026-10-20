@@ -17,6 +17,7 @@ test('isolated sections keep cookies, actions and preview frames separate across
     const originalModule = process.env.PYROCK_CAMOUFOX_MODULE;
     const originalProxy = process.env.PYROCK_PROXY;
     const originalStickyBase = process.env.PYROCK_PROXY_STICKY_BASE;
+    const originalStartUrl = process.env.PYROCK_START_URL;
     // A real browser, launched through the same camoufox-js contract the server uses.
     // The Camoufox binary itself is not needed here: the engine path (Playwright
     // adapter, screencast bridge, context isolation, crash recovery) is what is tested.
@@ -25,6 +26,9 @@ test('isolated sections keep cookies, actions and preview frames separate across
     // would send the test server itself through a remote gateway.
     process.env.PYROCK_PROXY = '';
     process.env.PYROCK_PROXY_STICKY_BASE = '';
+    // This test drives a real browser against the local server: the start page
+    // would take it to the internet and race with the navigations below.
+    process.env.PYROCK_START_URL = 'off';
     const sockets = new Set();
     const observedCookies = new Map();
     const observedActions = [];
@@ -64,6 +68,8 @@ test('isolated sections keep cookies, actions and preview frames separate across
         else process.env.PYROCK_PROXY = originalProxy;
         if (originalStickyBase === undefined) delete process.env.PYROCK_PROXY_STICKY_BASE;
         else process.env.PYROCK_PROXY_STICKY_BASE = originalStickyBase;
+        if (originalStartUrl === undefined) delete process.env.PYROCK_START_URL;
+        else process.env.PYROCK_START_URL = originalStartUrl;
     });
 
     await startServer({ host: '127.0.0.1', port: 0 });

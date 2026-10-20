@@ -7,6 +7,7 @@ const { pathToFileURL } = require('node:url');
 const WebSocket = require('ws');
 const { createScreencastController } = require('./screencast');
 const { createSessionManager } = require('./sessions');
+const { startUrl } = require('./start-url');
 const { measureExitIp } = require('./network-ip');
 const { generateHumanPath, typeDelays } = require('./humanize');
 const { createCamoufoxEngine, diagnosePage, sectionProxy, parseProxyTemplate, stickyBase, buildProxyUrl, proxyPort, proxyLabel } = require('./engines/camoufox');
@@ -250,6 +251,18 @@ const sessions = createSessionManager({
     },
     closeContext: context => engine.closeContext(context),
     createController: section => createScreencastController({ getPage: () => section.page }),
+    // A section that opens for the first time lands on the start page instead
+    // of a blank tab. The navigation goes through the section's own proxy, like
+    // any other, and it is awaited: a navigation that is still running would
+    // interrupt the next one. A recovered section keeps the page it had, so it
+    // is not navigated again.
+    onReady: async (section, reason) => {
+        if (reason === 'resume') return;
+        const url = startUrl();
+        if (!url) return;
+        try { await navigateToUrl(url, section); }
+        catch (error) { log.warn(`No se pudo abrir la página inicial: ${error.message}`); }
+    },
     // A closed section gives back its exit and stops any recovery in progress.
     onClosed: section => { stopRecovery(section.id); network?.forget(section.id); }
 });
