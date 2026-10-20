@@ -4,7 +4,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const { startUrl, DEFAULT_START_URL } = require('../src/start-url');
+const { startUrl, startTimeout, DEFAULT_START_URL, DEFAULT_START_TIMEOUT_MS } = require('../src/start-url');
 
 test('the start page is browser.lol unless another http page is chosen', () => {
     assert.equal(startUrl({}), DEFAULT_START_URL);
@@ -16,6 +16,15 @@ test('the start page is browser.lol unless another http page is chosen', () => {
     assert.equal(startUrl({ PYROCK_START_URL: 'off' }), null, '"off" means no start page at all');
     assert.equal(startUrl({ PYROCK_START_URL: 'OFF' }), null);
     assert.equal(DEFAULT_START_URL, 'https://browser.lol/');
+});
+
+test('the start page has the same time budget as the navigations of the operator', () => {
+    // browser.lol tarda más de ocho segundos desde un servidor con salida por
+    // proxy: con menos margen la sección se quedaba en blanco.
+    assert.equal(startTimeout({}), DEFAULT_START_TIMEOUT_MS);
+    assert.equal(startTimeout({ PYROCK_START_TIMEOUT_MS: '90000' }), 90000);
+    assert.equal(startTimeout({ PYROCK_START_TIMEOUT_MS: '1000' }), DEFAULT_START_TIMEOUT_MS, 'a tiny budget is ignored');
+    assert.equal(startTimeout({ PYROCK_START_TIMEOUT_MS: 'nonsense' }), DEFAULT_START_TIMEOUT_MS);
 });
 
 test('a new section opens on the start page instead of about:blank', async t => {

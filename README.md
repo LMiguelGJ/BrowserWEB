@@ -209,6 +209,7 @@ Hay **un proceso Camoufox compartido** y varias secciones independientes, cada u
 - `PYROCK_BLOCK_ADS` - Con `1`, se cortan las peticiones a redes de anuncios, consent y analítica. Una página que espera a uno de esos scripts puede quedarse en su pantalla de carga; algunos de ellos (un challenge de Cloudflare servido por una red de anuncios) incluso nunca resuelven. Está desactivado por defecto porque hay sitios que necesitan su script de consent para arrancar.
 - `PYROCK_SETTLE_TIMEOUT_MS` - Cuánto espera el servidor a que la página *se vea* (documento listo y con contenido) antes de responder. Default `20000`. Si se agota, la navegación responde con éxito pero `settled: false` y el estado real de la página, y el panel lo muestra.
 - `PYROCK_START_URL` - Página en la que abre cada sección nueva. Default `https://browser.lol/`. Solo se aceptan URLs `http`/`https`; un valor que no sea una página se ignora y se usa el default. Con `off` no se abre ninguna página inicial. La navegación sale por el proxy de esa sección, como cualquier otra, y una sección recuperada vuelve a la página que tenía en vez de a esta.
+- `PYROCK_START_TIMEOUT_MS` - Margen de la carga inicial. Default `45000`, el mismo que usan las navegaciones del operador: el sitio puede tardar (browser.lol llegó a tardar más de ocho segundos desde un servidor con salida por proxy). La carga inicial **no bloquea** a la sección: la sección queda lista igual y, si navegás mientras carga, tu navegación cancela la inicial.
 
 ### El tab "Red"
 
