@@ -36,6 +36,7 @@
 
 const { EventEmitter } = require('node:events');
 const { isIpProbe } = require('../network-ip');
+const { isHybridMode } = require('../network/config');
 
 const FALLBACK_POLL_MS = 200;
 const DEFAULT_FRAME_SIZE = { width: 1366, height: 768 };
@@ -313,10 +314,23 @@ function createCamoufoxEngine({ loader = () => import('camoufox-js'), launchOpti
                 },
                 ...launchOptions
             };
+            const hybrid = isHybridMode();
+            if (hybrid) {
+                // Every section brings its own proxy, so the browser has no global
+                // one. Two Firefox switches make sure nothing leaves directly: a
+                // dead proxy must not fall back to the real connection, and
+                // WebRTC may only use the proxy for ICE (it would otherwise
+                // reveal the real address).
+                options.firefox_user_prefs = {
+                    ...options.firefox_user_prefs,
+                    'network.proxy.failover_direct': false,
+                    'media.peerconnection.ice.proxy_only_if_behind_proxy': true
+                };
+            }
             // A residential proxy makes the exit IP look like a person's connection
             // instead of a datacenter one — the single factor that most bot
             // protection actually scores.
-            const proxy = process.env.PYROCK_PROXY?.trim();
+            const proxy = hybrid ? '' : process.env.PYROCK_PROXY?.trim();
             if (proxy) {
                 // With sticky ports the launch traffic leaves through the base
                 // port, so the geolocation Camoufox derives matches the pool
@@ -327,18 +341,25 @@ function createCamoufoxEngine({ loader = () => import('camoufox-js'), launchOpti
             }
             // With a proxy, the geolocation spoofed in the fingerprint should match
             // the proxy's IP; camoufox-js warns when it does not.
-            if (process.env.PYROCK_GEOIP === '1' || process.env.PYROCK_GEOIP === 'true') {
+            if (!hybrid && (process.env.PYROCK_GEOIP === '1' || process.env.PYROCK_GEOIP === 'true')) {
                 options.geoip = true;
             }
             return Camoufox(options);
         },
-        async openPage(browser, { section, onPopup } = {}) {
+        async openPage(browser, { section, onPopup, proxy: assigned, storageState } = {}) {
             // No context options: Camoufox generates and owns the fingerprint,
             // and overriding its viewport or locale would break consistency.
-            // The only exception is the proxy, so each section can keep its own
-            // sticky exit IP.
-            const proxy = section ? sectionProxy(section.id) : null;
-            const context = await browser.newContext(proxy ? { proxy } : undefined);
+            // The only exceptions are the proxy, so each section keeps its own
+            // exit, and the state restored when a section changes exit.
+            const hybrid = isHybridMode();
+            // In the hybrid mode a context without an assigned proxy would leave
+            // directly: refuse to create it at all.
+            if (hybrid && !assigned) throw new Error('A hybrid section needs an assigned proxy before it can open');
+            const proxy = assigned || (section ? sectionProxy(section.id) : null);
+            const contextOptions = {};
+            if (proxy) contextOptions.proxy = proxy;
+            if (storageState) contextOptions.storageState = storageState;
+            const context = await browser.newContext(Object.keys(contextOptions).length ? contextOptions : undefined);
             try {
                 const raw = await context.newPage();
                 if (logger) {

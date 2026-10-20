@@ -1,6 +1,6 @@
 'use strict';
 
-function createSessionManager({ openPage, closeContext, createController, maxSessions = 5 }) {
+function createSessionManager({ openPage, closeContext, createController, onClosed, maxSessions = 5 }) {
     if (typeof openPage !== 'function' || typeof closeContext !== 'function' || typeof createController !== 'function') {
         throw new TypeError('openPage, closeContext and createController are required');
     }
@@ -69,10 +69,16 @@ function createSessionManager({ openPage, closeContext, createController, maxSes
         section.state = 'ready';
         return section;
     }
+    // A listener that fails must never stop a section from closing.
+    const announceClosed = async section => {
+        try { await onClosed?.(section); } catch { /* the section is already gone */ }
+    };
     return {
         list() { return [...sessions.values()].map(publicSession); },
         get,
         getDefault: defaultSection,
+        // The id the next section will get, without consuming it.
+        peekNextId() { return `s${nextId}`; },
         async create({ name } = {}) {
             return serialize(async () => {
                 if (closed) throw Object.assign(new Error('Browser is shutting down'), { status: 503 });
@@ -93,8 +99,28 @@ function createSessionManager({ openPage, closeContext, createController, maxSes
                 if (!section) throw Object.assign(new Error('Sección no encontrada'), { status: 404 });
                 if (sessions.size <= 1) throw Object.assign(new Error('No se puede cerrar la última sección'), { status: 409 });
                 sessions.delete(id);
-                await dispose(section);
+                try { await dispose(section); }
+                finally { await announceClosed(section); }
                 return true;
+            });
+        },
+        // Releases the browser context of a section but keeps the section: its
+        // id, name and preview viewers stay while the exit is being replaced.
+        async suspend(id) {
+            return serialize(async () => {
+                const section = get(id);
+                if (!section) throw Object.assign(new Error('Sección no encontrada'), { status: 404 });
+                await dispose(section, { closeController: false });
+                section.context = section.page = null;
+                section.state = 'unavailable';
+                return section;
+            });
+        },
+        async resume(id) {
+            return serialize(async () => {
+                const section = get(id);
+                if (!section) throw Object.assign(new Error('Sección no encontrada'), { status: 404 });
+                return open(section);
             });
         },
         async restart(id) {
@@ -136,6 +162,7 @@ function createSessionManager({ openPage, closeContext, createController, maxSes
                 let firstError = null;
                 for (const section of existing) {
                     try { await dispose(section); } catch (error) { firstError ||= error; }
+                    await announceClosed(section);
                 }
                 if (firstError) throw firstError;
             });
