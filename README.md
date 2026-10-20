@@ -196,7 +196,7 @@ Hay **un proceso Camoufox compartido** y varias secciones independientes, cada u
 - `PYROCK_PROXY_POOL_URL` - URL HTTP del pool; por seguridad debe apuntar a loopback. Default: `http://127.0.0.1:8899`; no se debe publicar el puerto 8899.
 - `PROXY_SCRAPER_SERVE_PASSWORD` - Contraseña Basic Auth del servicio pool. Configúrala con una clave larga y aleatoria.
 - `PYROCK_PROXY_POOL_PASSWORD` - Contraseña que PyRock envía en el header Basic Auth (`any:<contraseña>`). Debe coincidir con `PROXY_SCRAPER_SERVE_PASSWORD`; el cliente no imprime ni muestra el valor.
-- `PYROCK_FREE_SEARCH_TIMEOUT_MS` - Tiempo máximo para encontrar/validar una salida gratuita antes de probar el respaldo. Default `60000`; rango válido `10000`–`300000`.
+- `PYROCK_FREE_SEARCH_TIMEOUT_MS` - Tiempo máximo para encontrar/validar una salida gratuita antes de probar el respaldo. Default `60000`; rango válido `10000`–`300000`. Ese plazo también cubre el calentamiento del pool: `proxy-scraper` tarda en recoger y comprobar sus fuentes al arrancar, y mientras tanto rechaza la conexión, así que la búsqueda espera y reintenta cada 2 s en vez de rendirse al primer rechazo. Una contraseña incorrecta (401) sí falla de inmediato.
 - `PYROCK_PROXY` - En modo híbrido, plantilla del proxy DataImpulse de respaldo, por ejemplo `http://usuario:clave@host:puerto`. Sus credenciales deben llegar por entorno/`.env`, nunca dentro de la imagen ni del repositorio.
 - `PYROCK_PROXY_STICKY_BASE` - Puerto sticky base de DataImpulse (10000–20000). Cada sección calcula su puerto a partir de su ID; no usa el puerto rotativo. DataImpulse solo se intenta tras un resultado gratuito negativo; si no está configurado o falla, la sección espera sin salir directamente.
 - El pool público gratuito es de terceros: no introduzcas contraseñas, datos personales ni información sensible en sitios visitados a través de esas salidas.
@@ -209,6 +209,7 @@ Hay **un proceso Camoufox compartido** y varias secciones independientes, cada u
 El tab **Red** del deck dice por dónde sale el navegador y qué IP está usando cada sección:
 
 - **Proveedor y estado**: indica si la sección usa `proxy-scraper` gratuito, DataImpulse o está esperando; expone motivo y búsqueda gratuita sin mostrar credenciales. `/api/network` y `/health` incluyen el estado híbrido.
+- **Estado del pool**: `ok`, `vacío` (no hay proxies ahora), `no responde` (el servicio del pool no contesta) o `clave incorrecta`. El motivo crudo queda en el tooltip de la fila.
 - **Última medición**: la IP medida y a qué hora. Con proxy rotativo la IP cambia en cada petición: lo que se muestra es siempre una foto, no una identidad.
 - **Secciones**: una fila por sección con su última IP medida. El botón **Medir ahora** consulta servicios gratuitos en una pestaña temporal del mismo contexto/proxy, sin depender de CSP/CORS del sitio abierto. La pestaña se cierra al terminar o fallar y nunca reemplaza el preview. Cada sección tiene un límite total de 15 segundos.
 - **Estado de medición**: `IP sin medir` si todavía no hay resultado; `Medición fallida` si la consulta falla. Si existe una IP anterior, queda identificada como `Última IP` con su hora, no como una medición nueva. Medir consume una pequeña cantidad de tráfico de la proxy; no comprueba la salud del video remoto.

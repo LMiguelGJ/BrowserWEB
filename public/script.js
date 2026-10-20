@@ -102,6 +102,20 @@ function closePanel() {
 // Opens a panel (closing the other one), or closes it when it is already open.
 // Muestra por dónde sale el navegador y qué IP está usando cada sección. Con proxy
 // rotativo la IP cambia por petición: lo que se muestra es una foto con su hora.
+// What the free pool is doing, in words the operator can act on. The raw
+// status travels in the tooltip, because 'unavailable' alone says nothing.
+function poolLabel(pool) {
+    if (!pool) return 'sin estado';
+    if (pool.status === 'ok') return 'ok';
+    if (pool.status === 'empty') return 'vacío';
+    if (pool.status === 'unavailable') {
+        if (pool.reason === 'unreachable') return 'no responde';
+        if (pool.reason === 'unauthorized') return 'clave incorrecta';
+        return 'no disponible';
+    }
+    return pool.status;
+}
+
 async function renderNetwork() {
     const body = document.getElementById('netBody');
     if (!body) return null;
@@ -121,10 +135,14 @@ async function renderNetwork() {
         : data.mode === 'rotating' ? 'rotativo (cambia en cada petición)'
         : 'sin proxy: sale la IP del servidor';
     const rows = data.mode === 'hybrid'
-        ? [['MODO', mode], ['POOL GRATUITO', data.pool?.status || 'sin estado'], ['RESPALDO', data.fallbackConfigured ? 'DataImpulse' : 'no configurado']]
+        ? [
+            ['MODO', mode],
+            ['POOL GRATUITO', poolLabel(data.pool), data.pool?.reason ? `motivo: ${data.pool.reason}` : null],
+            ['RESPALDO', data.fallbackConfigured ? 'DataImpulse' : 'no configurado']
+        ]
         : [['PROXY', data.configured ? `${data.host}:${data.port}` : 'sin proxy'], ['MODO', mode], ['AUTENTICACIÓN', data.credentials || '—']];
     body.replaceChildren();
-    for (const [label, value] of rows) {
+    for (const [label, value, hint] of rows) {
         const line = document.createElement('div');
         line.className = 'net-row';
         const key = document.createElement('span');
@@ -133,6 +151,7 @@ async function renderNetwork() {
         const text = document.createElement('span');
         text.className = 'net-value';
         text.textContent = value;
+        if (hint) text.title = hint;
         line.append(key, text);
         body.append(line);
     }

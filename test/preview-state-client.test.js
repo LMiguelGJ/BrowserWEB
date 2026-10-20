@@ -205,6 +205,28 @@ test('the hybrid panel says when a free exit could not be found', async () => {
     assert.match(text, /sin IP gratis: pool_empty/, 'the panel says why there was no free exit');
 });
 
+test('the hybrid panel says why the free pool cannot answer', async () => {
+    const render = async pool => {
+        const h = createScriptHarness({ network: { mode: 'hybrid', pool, fallbackConfigured: true, sections: [] } });
+        await h.load();
+        await h.api().renderNetwork();
+        const body = h.elements.get('netBody');
+        const row = body.children.find(child => child.className === 'net-row' && child.children[0]?.textContent === 'POOL GRATUITO');
+        assert.ok(row, 'the panel has a row for the free pool');
+        return { text: row.children.map(inner => inner.textContent).join(' '), title: row.children[1].title };
+    };
+    const unreachable = await render({ status: 'unavailable', reason: 'unreachable' });
+    assert.match(unreachable.text, /no responde/, 'the operator is told the pool is not answering');
+    assert.doesNotMatch(unreachable.text, /unavailable/, 'the raw status is not left on its own');
+    assert.match(unreachable.title, /unreachable/, 'the raw reason stays available on hover');
+    const unauthorized = await render({ status: 'unavailable', reason: 'unauthorized' });
+    assert.match(unauthorized.text, /clave incorrecta/);
+    const empty = await render({ status: 'empty' });
+    assert.match(empty.text, /vacío/);
+    const ok = await render({ status: 'ok' });
+    assert.match(ok.text, /ok/);
+});
+
 test('the hybrid panel polls every five seconds only while open and cancels on close', async () => {
     const calls = [];
     const h = createScriptHarness({ network: path => {

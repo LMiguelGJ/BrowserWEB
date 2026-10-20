@@ -26,7 +26,8 @@ function createLimiter(max) {
 function createAssigner({
     pool, fallback, reservations, probe,
     now = Date.now, freeDeadlineMs = 60000, fallbackDeadlineMs = 30000,
-    probeTimeoutMs = 8000, poolTimeoutMs = 5000, maxConcurrentProbes = 2
+    probeTimeoutMs = 8000, poolTimeoutMs = 5000, maxConcurrentProbes = 2,
+    poolRetryMs = 2000, wait = ms => new Promise(resolve => setTimeout(resolve, ms))
 }) {
     const limit = createLimiter(maxConcurrentProbes);
 
@@ -42,9 +43,20 @@ function createAssigner({
         while (summary.examined < MAX_EXAMINED) {
             if (isCancelled()) return { cancelled: true };
             const remaining = deadline - now();
-            if (remaining <= 0) return { reason: 'deadline_exceeded' };
+            // A pool that never answered is not a deadline: the service is down.
+            if (remaining <= 0) return { reason: summary.unavailable && !summary.examined ? 'pool_unavailable' : 'deadline_exceeded' };
             const popped = await pool.pop({ timeoutMs: Math.min(poolTimeoutMs, remaining) });
-            if (popped.status === 'unavailable') return { reason: 'pool_unavailable' };
+            if (popped.status === 'unavailable') {
+                // A pool that is still starting up refuses the connection for a
+                // while: that is not an answer, so it is waited for until the
+                // deadline. A wrong password is a mistake, not a delay.
+                if (popped.reason === 'unauthorized') return { reason: 'pool_unavailable' };
+                summary.unavailable = (summary.unavailable || 0) + 1;
+                const left = deadline - now();
+                if (left <= 0) return { reason: 'pool_unavailable' };
+                await wait(Math.min(poolRetryMs, left));
+                continue;
+            }
             if (popped.status === 'empty') return { reason: summary.examined ? 'candidates_exhausted' : 'pool_empty' };
             summary.examined++;
             if (popped.status === 'invalid') {
@@ -90,7 +102,7 @@ function createAssigner({
             // A request that must keep the current exit (the operator asked for
             // another one) holds it until a new one is actually secured.
             if (!keepCurrent) reservations.release(sectionId);
-            const summary = { examined: 0 };
+            const summary = { examined: 0, unavailable: 0 };
             const free = await searchFree(sectionId, isCancelled, summary);
             const done = result => ({ ...result, freeSearch: { ...summary, reason: free.reason || null, durationMs: now() - startedAt } });
             if (free.cancelled) { if (!keepCurrent) reservations.release(sectionId); return done({ provider: null, reason: 'cancelled' }); }

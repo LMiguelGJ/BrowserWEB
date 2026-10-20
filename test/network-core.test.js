@@ -203,6 +203,23 @@ test('a free-only request never reaches the paid fallback and keeps the exit the
     assert.equal(kit.reservations.exitOf('s1'), '8.8.4.4', 'the section keeps the exit it was using');
 });
 
+test('an unreachable pool is waited for until the deadline instead of giving up at once', async () => {
+    let time = 0;
+    const pops = [];
+    const kit = makeKit({
+        exits: { 'http://gw.example:10001': '5.5.5.5' }, fallbackEnv: PAID,
+        clock: () => time,
+        options: { freeDeadlineMs: 6000, wait: async ms => { time += ms; } }
+    });
+    // The pool is starting up: it refuses the connection for a while.
+    kit.pool.pop = async () => { pops.push(time); return { status: 'unavailable', reason: 'unreachable' }; };
+    const result = await kit.assigner.assign('s1');
+    assert.ok(pops.length > 1, 'the pool was asked again while it was down');
+    assert.equal(result.provider, 'dataimpulse', 'only after the deadline the paid fallback is used');
+    assert.equal(result.reason, 'pool_unavailable');
+    assert.equal(kit.fallbackProbes, 1, 'the paid exit was measured once');
+});
+
 test('an unavailable pool falls back and says why', async () => {
     const kit = makeKit({ exits: { 'http://gw.example:10001': '5.5.5.5' }, fallbackEnv: PAID });
     kit.pool.pop = async () => ({ status: 'unavailable', reason: 'unauthorized' });
