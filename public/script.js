@@ -116,12 +116,12 @@ async function renderNetwork() {
         body.append(failed);
         return null;
     }
-    const mode = data.mode === 'hybrid' ? 'híbrido: gratis primero; DataImpulse solo como respaldo'
+    const mode = data.mode === 'hybrid' ? 'híbrido: gratis primero; DataImpulse de respaldo'
         : data.mode === 'sticky' ? `sticky (puerto ${data.stickyBase}+, una IP fija por sección)`
         : data.mode === 'rotating' ? 'rotativo (cambia en cada petición)'
         : 'sin proxy: sale la IP del servidor';
     const rows = data.mode === 'hybrid'
-        ? [['MODO', mode], ['POOL GRATUITO', data.pool?.status || 'sin estado'], ['RESPALDO', data.fallbackConfigured ? 'DataImpulse · consume saldo' : 'no configurado']]
+        ? [['MODO', mode], ['POOL GRATUITO', data.pool?.status || 'sin estado'], ['RESPALDO', data.fallbackConfigured ? 'DataImpulse' : 'no configurado']]
         : [['PROXY', data.configured ? `${data.host}:${data.port}` : 'sin proxy'], ['MODO', mode], ['AUTENTICACIÓN', data.credentials || '—']];
     body.replaceChildren();
     for (const [label, value] of rows) {
@@ -159,7 +159,7 @@ async function renderNetwork() {
         const parts = [];
         if (data.mode === 'hybrid') {
             if (section.provider === 'free') parts.push('Gratis');
-            if (section.provider === 'dataimpulse') parts.push('DataImpulse · consume saldo');
+            if (section.provider === 'dataimpulse') parts.push('DataImpulse');
             const states = { connected: 'conectada', validating: 'comprobando gratuitas', recovering: 'reconectando', waiting: 'esperando proxy', failed: 'sin salida' };
             parts.push(states[section.state] || 'sin estado');
             if (section.ip) parts.push(section.ip);
@@ -179,12 +179,6 @@ async function renderNetwork() {
         ip.textContent = parts.length ? parts.join(' · ') : 'sin medir';
         line.append(name, ip);
         body.append(line);
-    }
-    if (data.mode === 'hybrid') {
-        const note = document.createElement('div');
-        note.className = 'net-note';
-        note.textContent = 'La reconexión puede recargar el sitio y perder estado no guardado. No se repiten clicks ni envíos.';
-        body.append(note);
     }
     return data;
 }

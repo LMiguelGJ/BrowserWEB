@@ -128,7 +128,7 @@ test('the network panel measures the sections with no IP and warns about a rotat
     assert.match(text, /PYROCK_PROXY_STICKY_BASE/, 'and says how to get a fixed IP per section');
 });
 
-test('the hybrid network panel explains the provider, waiting reason, and reconnection limits', async () => {
+test('the hybrid network panel names the provider without balance wording and without the reconnection warning', async () => {
     const h = createScriptHarness({
         network: {
             mode: 'hybrid', pool: { status: 'empty' }, fallbackConfigured: true,
@@ -147,11 +147,13 @@ test('the hybrid network panel explains the provider, waiting reason, and reconn
         : child.textContent).join('\n');
     assert.match(text, /híbrido/i);
     assert.match(text, /Gratis/i);
-    assert.match(text, /DataImpulse.*consume saldo/i);
+    assert.match(text, /DataImpulse/i);
+    assert.doesNotMatch(text, /consume saldo/i, 'the panel does not talk about balance consumption');
+    assert.doesNotMatch(text, /solo como respaldo/i, 'the mode line does not repeat that the fallback is only a fallback');
     assert.match(text, /esperando/i);
     assert.match(text, /fallback_unavailable/i);
     assert.match(text, /5\.5\.5\.5/);
-    assert.match(text, /puede recargar/i, 'the operator is warned about the continuity limit');
+    assert.doesNotMatch(text, /puede recargar/i, 'the reconnection warning is not shown');
     assert.doesNotMatch(text, /user:|pw@/i);
 });
 
