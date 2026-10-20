@@ -575,6 +575,15 @@ preview.addEventListener('click', (event) => {
     sendClick();
 });
 
+// El refresco de la lista de secciones corre mientras el cliente está
+// conectado: si la app se abrió con el servidor caído, la lista se puebla
+// sola cuando el servidor vuelve.
+let sessionRefreshTimer = null;
+function startSessionRefresh() {
+    if (sessionRefreshTimer !== null) return;
+    sessionRefreshTimer = setInterval(() => { refreshSessions(); }, 3000);
+}
+
 async function refreshSessions() {
     if (!pyrock || !pyrock.isConnected || typeof pyrock.listSessions !== 'function') return;
     const result = await pyrock.listSessions();
@@ -686,6 +695,12 @@ window.addEventListener('load', async () => {
             onStatusChange: (status) => {
                 const connected = status === 'connected';
                 updateStatus(connected ? 'Conectado' : 'Desconectado', connected);
+                // Si la app se abrió con el servidor caído, cuando el cliente
+                // vuelve a conectar la lista de secciones tiene que poblarse.
+                if (connected) {
+                    refreshSessions();
+                    startSessionRefresh();
+                }
             },
             onPreviewStatus: (state, message) => {
                 const labels = {
@@ -768,7 +783,7 @@ window.addEventListener('load', async () => {
                 // Refresco periódico: mantiene al panel al tanto de dónde está la
                 // sección (que cambia sola si el sitio abre otra pestaña) como del
                 // estado de la página que sigue cargando.
-                setInterval(() => { refreshSessions(); }, 3000);
+                startSessionRefresh();
             } else {
                 addLog('Error conectando al servidor', 'error');
                 updateStatus('Error de conexión', false);

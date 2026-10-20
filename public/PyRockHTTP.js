@@ -47,6 +47,7 @@ class PyRockHTTP {
             if (!response.success) return false;
 
             this.isConnected = true;
+            this.retryIndex = 0;
             this.onStatusChange('connected');
             this.onLog('Conectado al servidor PyRock via HTTP');
             if (response.browser === 'disconnected') {
@@ -73,6 +74,7 @@ class PyRockHTTP {
                 this.onLog(`Error conectando: ${error.message}`);
                 this.isConnected = false;
                 this.onStatusChange('disconnected');
+                this.scheduleConnectRetry(generation);
             }
             return false;
         }
@@ -205,6 +207,20 @@ class PyRockHTTP {
         this.reconnectTimer = setTimeout(() => {
             this.reconnectTimer = null;
             this.openPreviewSocket(generation);
+        }, delay);
+    }
+
+    // When the server is down the client keeps trying to connect on its own: a
+    // tab that was open during a restart recovers by itself, without the
+    // operator having to reload the page.
+    scheduleConnectRetry(generation) {
+        if (this.isConnected || this.isDisconnecting || generation !== this.connectionGeneration || this.reconnectTimer) return;
+        const delays = [1000, 2000, 4000, 8000, 10000];
+        const delay = delays[Math.min(this.retryIndex, delays.length - 1)];
+        this.retryIndex = Math.min(this.retryIndex + 1, delays.length - 1);
+        this.reconnectTimer = setTimeout(() => {
+            this.reconnectTimer = null;
+            return this.connectOnce().catch(() => {});
         }, delay);
     }
 

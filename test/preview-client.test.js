@@ -50,6 +50,26 @@ test('status polling self-schedules independently of preview frames', async () =
     assert.equal(statusTimer.cancelled, true);
 });
 
+test('a tab open while the server is down reconnects on its own', async () => {
+    let attempts = 0;
+    const harness = createHarness('http://localhost:3000', async url => {
+        if (url.includes('/api/status')) {
+            attempts++;
+            if (attempts === 1) throw new Error('connection refused');
+            return { ok: true, json: async () => ({ success: true, browser: 'connected' }) };
+        }
+        return { ok: true, json: async () => ({ success: true }) };
+    });
+    const client = harness.client;
+    assert.equal(await client.connect(), false, 'the first attempt fails while the server is down');
+    assert.equal(client.isConnected, false);
+    // The client keeps trying on its own: nobody has to reload the page.
+    const retry = harness.timeouts.find(timer => timer.delay === 1000);
+    assert.ok(retry, 'a reconnection is scheduled');
+    await retry.fn();
+    assert.equal(client.isConnected, true, 'and the client connects when the server answers');
+});
+
 test('render load and error completion each ACK a frame once', async () => {
     const { client, sockets } = createHarness();
     const rendered = [];
