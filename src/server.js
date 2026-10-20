@@ -263,7 +263,7 @@ const sessions = createSessionManager({
         if (reason === 'resume') return;
         const url = startUrl();
         if (!url) return;
-        try { await navigateToUrl(url, section); }
+        try { await openStartPage(url, section); }
         catch (error) { log.warn(`No se pudo abrir la página inicial: ${error.message}`); }
     },
     // A closed section gives back its exit and stops any recovery in progress.
@@ -295,6 +295,14 @@ function getSection(id) {
     // While the exit is being replaced the section has no page: say so instead of failing obscurely.
     if (section.recovering) throw Object.assign(new Error('La sección está cambiando de salida de red; reintentá en unos segundos'), { status: 503 });
     return section;
+}
+// La navegación inicial: a diferencia de las del operador, no espera a que
+// la página "se vea" (el ajuste), para no retener la sección —y con ella el
+// arranque— más de lo necesario. La carga sigue en el navegador.
+async function openStartPage(url, section) {
+    log.info(`Navegando a: ${url}`);
+    const response = await section.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 8000 });
+    if (response) log.info(`Respuesta HTTP: ${response.status()}`);
 }
 async function navigateToUrl(url, section, retryCount = 0) {
     const maxRetries = 3, retryDelay = Math.pow(2, retryCount) * 1000;
@@ -618,11 +626,15 @@ async function startServer({ port = PORT, host = '0.0.0.0' } = {}) {
     if (server.listening) return server;
     if (startPromise) return startPromise;
     startPromise = (async () => {
+        // El puerto abre antes del navegador: una página inicial lenta no puede
+        // dejar la app sin respuesta, y el proxy de adelante da 502 cuando el
+        // upstream todavía no escucha.
+        await new Promise((resolve, reject) => { const onError = error => { server.off('listening', onListening); reject(error); }; const onListening = () => { server.off('error', onError); resolve(); }; server.once('error', onError); server.once('listening', onListening); server.listen(port, host); });
+        log.info(`🚀 Servidor PyRock ejecutándose en puerto ${server.address().port}`);
         const browserReady = await initBrowser();
         if (shuttingDown) throw new Error('Server is shutting down');
         if (!browserReady) log.error('No se pudo inicializar el navegador');
-        await new Promise((resolve, reject) => { const onError = error => { server.off('listening', onListening); reject(error); }; const onListening = () => { server.off('error', onError); resolve(); }; server.once('error', onError); server.once('listening', onListening); server.listen(port, host); });
-        log.info(`🚀 Servidor PyRock ejecutándose en puerto ${server.address().port}`); log.info(`📱 Interfaz web: http://localhost:${server.address().port}`); log.info(`🌐 Navegador: ${browserReady ? 'Listo' : 'Error'}`); return server;
+        log.info(`📱 Interfaz web: http://localhost:${server.address().port}`); log.info(`🌐 Navegador: ${browserReady ? 'Listo' : 'Error'}`); return server;
     })();
     try { return await startPromise; } finally { startPromise = null; }
 }
