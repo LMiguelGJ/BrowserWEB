@@ -43,6 +43,7 @@ function createScriptHarness({ sessions = [{ id: 's1', name: 'One', url: 'https:
       querySelector(selector) { if(selector==='input') return this.children.find(x=>x.tag==='input')||null; return null; }, focus() { document.activeElement=this; }, blur() { this.dispatch('blur'); }, getBoundingClientRect(){return this.rect;},
       scrollHeight:0, click(){} };
   }
+  const intervalTimers = [];
   const document = { hidden:false, activeElement:null,
     getElementById(id) { if(!elements.has(id)) elements.set(id,element()); return elements.get(id); },
     createElement(tag) { return element(tag); }, querySelector(sel) { if(sel==='.preview-container') return this.getElementById('.preview-container'); return null; },
@@ -69,8 +70,9 @@ function createScriptHarness({ sessions = [{ id: 's1', name: 'One', url: 'https:
     async executeCommand(){operations.push(['execute',this.pyRock.sessionId]);await onExecute?.();this.visualIndicators.showClickIndicator(1,2);}
   }
   const context={document,window,localStorage:{getItem:k=>local.get(k)||null,setItem:(k,v)=>local.set(k,v)},PyRockHTTP:FakeClient,PyRockScriptParser:FakeParser,console:{log(){},error(){}},Date,URL,
-    setTimeout(fn,delay){const t={fn,delay,cancelled:false};timers.push(t);return t;},clearTimeout(t){if(t)t.cancelled=true;},setImmediate};
-  vm.runInNewContext(`${fs.readFileSync('public/script.js','utf8')}\nwindow.__testApi={refreshSessions,activateSession,addSessionInline,executeScript,initBrowser,showDiagnosis,showPreviewMode,renderNetwork,openNetworkPanel};`,context,{filename:'public/script.js'});
-  return {document,elements,window,context,operations,timers,local,clicks,presses, get client(){return client;},get options(){return options;}, async load(){await window.dispatch('load');return options;}, api:()=>window.__testApi};
+    setTimeout(fn,delay){const t={fn,delay,cancelled:false};timers.push(t);return t;},clearTimeout(t){if(t)t.cancelled=true;},
+    setInterval(fn,delay){const t={fn,delay,cancelled:false};intervalTimers.push(t);return t;},clearInterval(t){if(t)t.cancelled=true;},setImmediate};
+  vm.runInNewContext(`${fs.readFileSync('public/script.js','utf8')}\nwindow.__testApi={refreshSessions,activateSession,addSessionInline,executeScript,initBrowser,showDiagnosis,showPreviewMode,renderNetwork,openNetworkPanel,togglePanel};`,context,{filename:'public/script.js'});
+  return {document,elements,window,context,operations,timers,intervals:intervalTimers,local,clicks,presses, get client(){return client;},get options(){return options;}, async load(){await window.dispatch('load');return options;}, api:()=>window.__testApi};
 }
 module.exports={createHarness,createScriptHarness};

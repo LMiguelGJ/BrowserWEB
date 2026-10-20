@@ -8,6 +8,20 @@ let isScriptRunning = false;
 // Side panels (log and scripts): only one is open at a time.
 const PANEL_TABS = { logPanel: 'tabLog', scriptPanel: 'tabScripts', netPanel: 'tabNet' };
 let openPanelId = null;
+let networkPollingTimer = null;
+let networkPollInFlight = false;
+function stopNetworkPolling() {
+    if (networkPollingTimer !== null) clearInterval(networkPollingTimer);
+    networkPollingTimer = null;
+}
+function startNetworkPolling() {
+    if (networkPollingTimer !== null) return;
+    networkPollingTimer = setInterval(async () => {
+        if (openPanelId !== 'netPanel' || networkPollInFlight) return;
+        networkPollInFlight = true;
+        try { await renderNetwork(); } finally { networkPollInFlight = false; }
+    }, 5000);
+}
 
 // Elementos del DOM
 const preview = document.getElementById('preview');
@@ -80,6 +94,7 @@ function closePanel() {
     if (!openPanelId) return;
     const closing = openPanelId;
     openPanelId = null;
+    if (closing === 'netPanel') stopNetworkPolling();
     setPanelState(closing, false);
     document.getElementById(PANEL_TABS[closing]).focus({ preventScroll: true });
 }
@@ -101,14 +116,13 @@ async function renderNetwork() {
         body.append(failed);
         return null;
     }
-    const mode = data.mode === 'sticky' ? `sticky (puerto ${data.stickyBase}+, una IP fija por sección)`
+    const mode = data.mode === 'hybrid' ? 'híbrido: gratis primero; DataImpulse solo como respaldo'
+        : data.mode === 'sticky' ? `sticky (puerto ${data.stickyBase}+, una IP fija por sección)`
         : data.mode === 'rotating' ? 'rotativo (cambia en cada petición)'
         : 'sin proxy: sale la IP del servidor';
-    const rows = [
-        ['PROXY', data.configured ? `${data.host}:${data.port}` : 'sin proxy'],
-        ['MODO', mode],
-        ['AUTENTICACIÓN', data.credentials || '—']
-    ];
+    const rows = data.mode === 'hybrid'
+        ? [['MODO', mode], ['POOL GRATUITO', data.pool?.status || 'sin estado'], ['RESPALDO', data.fallbackConfigured ? 'DataImpulse · consume saldo' : 'no configurado']]
+        : [['PROXY', data.configured ? `${data.host}:${data.port}` : 'sin proxy'], ['MODO', mode], ['AUTENTICACIÓN', data.credentials || '—']];
     body.replaceChildren();
     for (const [label, value] of rows) {
         const line = document.createElement('div');
@@ -143,15 +157,34 @@ async function renderNetwork() {
         const ip = document.createElement('span');
         ip.className = 'net-value';
         const parts = [];
-        if (section.measurementError) parts.push('Medición fallida');
-        if (section.ip) parts.push(section.measurementError ? `Última IP: ${section.ip}` : section.ip);
-        else parts.push('IP sin medir');
-        if (section.port) parts.push(`puerto ${section.port}`);
-        if (section.measuredAt) parts.push(new Date(section.measuredAt).toLocaleTimeString());
-        if (section.ipCount > 1) parts.push(`${section.ipCount} IPs distintas`);
+        if (data.mode === 'hybrid') {
+            if (section.provider === 'free') parts.push('Gratis');
+            if (section.provider === 'dataimpulse') parts.push('DataImpulse · consume saldo');
+            const states = { connected: 'conectada', validating: 'comprobando gratuitas', recovering: 'reconectando', waiting: 'esperando proxy', failed: 'sin salida' };
+            parts.push(states[section.state] || 'sin estado');
+            if (section.ip) parts.push(section.ip);
+            else if (section.state === 'waiting') parts.push('IP sin medir');
+            if (section.port) parts.push(`puerto ${section.port}`);
+            const reason = section.reason || section.freeReason;
+            if (reason && section.state !== 'connected') parts.push(`motivo: ${reason}`);
+            if (section.reconnects) parts.push(`${section.reconnects} reconexiones`);
+        } else {
+            if (section.measurementError) parts.push('Medición fallida');
+            if (section.ip) parts.push(section.measurementError ? `Última IP: ${section.ip}` : section.ip);
+            else parts.push('IP sin medir');
+            if (section.port) parts.push(`puerto ${section.port}`);
+            if (section.measuredAt) parts.push(new Date(section.measuredAt).toLocaleTimeString());
+            if (section.ipCount > 1) parts.push(`${section.ipCount} IPs distintas`);
+        }
         ip.textContent = parts.length ? parts.join(' · ') : 'sin medir';
         line.append(name, ip);
         body.append(line);
+    }
+    if (data.mode === 'hybrid') {
+        const note = document.createElement('div');
+        note.className = 'net-note';
+        note.textContent = 'La reconexión puede recargar el sitio y perder estado no guardado. No se repiten clicks ni envíos.';
+        body.append(note);
     }
     return data;
 }
@@ -169,10 +202,11 @@ async function measureNetwork() {
 }
 
 async function openNetworkPanel() {
+    startNetworkPolling();
     const data = await renderNetwork();
-    // Al abrir el panel, las secciones sin IP se miden solas: el operador no
-    // tiene que adivinar si el dato que ve es viejo.
-    if (data && data.sections.some(section => !section.ip)) measureNetwork();
+    // El modo híbrido ya sondea desde el gestor; abrir el panel solo lee su
+    // estado compartido y no crea otra medición que compita con recuperación.
+    if (data && data.mode !== 'hybrid' && data.sections.some(section => !section.ip)) measureNetwork();
 }
 
 function togglePanel(panelId) {
@@ -181,7 +215,10 @@ function togglePanel(panelId) {
         closePanel();
         return;
     }
-    if (openPanelId) setPanelState(openPanelId, false);
+    if (openPanelId) {
+        if (openPanelId === 'netPanel') stopNetworkPolling();
+        setPanelState(openPanelId, false);
+    }
     openPanelId = panelId;
     setPanelState(panelId, true);
     if (panelId === 'logPanel') {

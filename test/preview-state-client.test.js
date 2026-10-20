@@ -128,6 +128,54 @@ test('the network panel measures the sections with no IP and warns about a rotat
     assert.match(text, /PYROCK_PROXY_STICKY_BASE/, 'and says how to get a fixed IP per section');
 });
 
+test('the hybrid network panel explains the provider, waiting reason, and reconnection limits', async () => {
+    const h = createScriptHarness({
+        network: {
+            mode: 'hybrid', pool: { status: 'empty' }, fallbackConfigured: true,
+            sections: [
+                { id: 's1', name: 'Gratis', provider: 'free', state: 'connected', proxy: 'http://8.8.4.4:3128', port: 3128, ip: '8.8.4.4', measuredAt: '2026-10-19T19:40:12.000Z' },
+                { id: 's2', name: 'Respaldo', provider: 'dataimpulse', state: 'connected', proxy: 'http://gw.example:10002', port: 10002, ip: '5.5.5.5', reason: 'pool_empty' },
+                { id: 's3', name: 'Esperando', provider: null, state: 'waiting', reason: 'fallback_unavailable', freeReason: 'pool_unavailable', ip: null }
+            ]
+        }
+    });
+    await h.load();
+    await h.api().renderNetwork();
+    const body = h.elements.get('netBody');
+    const text = body.children.map(child => child.children.length
+        ? child.children.map(inner => inner.textContent).join(' ')
+        : child.textContent).join('\n');
+    assert.match(text, /híbrido/i);
+    assert.match(text, /Gratis/i);
+    assert.match(text, /DataImpulse.*consume saldo/i);
+    assert.match(text, /esperando/i);
+    assert.match(text, /fallback_unavailable/i);
+    assert.match(text, /5\.5\.5\.5/);
+    assert.match(text, /puede recargar/i, 'the operator is warned about the continuity limit');
+    assert.doesNotMatch(text, /user:|pw@/i);
+});
+
+test('the hybrid panel polls every five seconds only while open and cancels on close', async () => {
+    const calls = [];
+    const h = createScriptHarness({ network: path => {
+        calls.push(path);
+        return { mode: 'hybrid', pool: { status: 'ok' }, sections: [] };
+    } });
+    await h.load();
+    h.api().togglePanel('netPanel');
+    await Promise.resolve();
+    const panelTimer = h.intervals.find(timer => timer.delay === 5000);
+    assert.ok(panelTimer, 'the open panel schedules a five-second refresh');
+    const before = calls.length;
+    await panelTimer.fn();
+    assert.equal(calls.length, before + 1, 'an open panel refreshes status');
+    h.document.dispatch('keydown', { key: 'Escape' });
+    assert.equal(panelTimer.cancelled, true, 'closing Red clears its interval');
+    const afterClose = calls.length;
+    await panelTimer.fn();
+    assert.equal(calls.length, afterClose, 'a closed panel performs no polling');
+});
+
 test('the network panel does not measure again when every section already has an IP', async () => {
     const calls = [];
     const h = createScriptHarness({

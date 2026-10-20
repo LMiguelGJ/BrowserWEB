@@ -51,10 +51,16 @@ function makePage(context, label = 'shot', url = 'https://example.test/') {
         if (source.includes('ipify')) return '203.0.113.7';
         return { width: 1280, height: 720 };
     };
+    // The answer also behaves like an IP service, so the exit measurement works:
+    // config.ipFor(contextOptions, url) decides which address a context "has" and
+    // may throw to simulate a dead proxy.
     page.goto = async (url) => {
         page.calls.push(['navigate', url]);
-        return { status: () => 200, statusText: () => 'OK' };
+        const config = globalThis.__pyrockCamoufoxConfig || {};
+        const ip = config.ipFor ? config.ipFor(context.options, url) : '203.0.113.7';
+        return { status: () => 200, statusText: () => 'OK', ok: () => true, text: async () => ip };
     };
+    page.close = async () => { page.closed = true; };
     page.screenshot = async options => {
         page.calls.push(['screenshot', options]);
         return Buffer.from(label);
@@ -79,11 +85,13 @@ function makeBrowser() {
     const browser = new EventEmitter();
     browser.closeCount = 0;
     browser.close = async () => { browser.closeCount++; browser.emit('disconnected'); };
-    browser.newContext = async () => {
+    browser.newContext = async (options) => {
         const state = currentState();
         const context = new EventEmitter();
         context.closed = false;
+        context.options = options;
         context.pages = [];
+        context.storageState = async () => ({ cookies: [], origins: [] });
         context.newPage = async () => {
             const config = globalThis.__pyrockCamoufoxConfig || {};
             if (config.beforeNewPage) await config.beforeNewPage(context);

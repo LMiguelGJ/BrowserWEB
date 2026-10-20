@@ -10,6 +10,9 @@ const { createSessionManager } = require('./sessions');
 const { measureExitIp } = require('./network-ip');
 const { generateHumanPath, typeDelays } = require('./humanize');
 const { createCamoufoxEngine, diagnosePage, sectionProxy, parseProxyTemplate, stickyBase, buildProxyUrl, proxyPort, proxyLabel } = require('./engines/camoufox');
+const { readNetworkConfig, isHybridMode } = require('./network/config');
+const { createNetworkManager } = require('./network/manager');
+const { captureSnapshot, mergeSnapshots, restoreSnapshot } = require('./network/snapshot');
 const PORT = process.env.PORT || 3000;
 // Camoufox (anti-detect Firefox via Playwright) is the only engine.
 // PYROCK_CAMOUFOX_MODULE is a test seam: it points the loader at a fixture module.
@@ -52,27 +55,177 @@ async function ensureBrowser() {
     });
     return launched;
 }
+// ---- Hybrid network: a free exit per section, DataImpulse only as a fallback ----
+// The manager is built on first use from the environment, so a wrong setting
+// is reported instead of guessed around. Outside the hybrid mode none of this
+// runs and the sections behave exactly as before.
+let network = null;
+let networkSignature = '';
+function ensureNetwork() {
+    if (!isHybridMode()) { network = null; networkSignature = ''; return null; }
+    const config = readNetworkConfig();
+    const signature = JSON.stringify(config);
+    if (!network || signature !== networkSignature) {
+        network = createNetworkManager({ config, env: process.env, probe: probeProxy });
+        networkSignature = signature;
+    }
+    return network;
+}
+// Measures the real exit of a candidate in the browser itself, in a throwaway
+// context: that is the address a site would see, whatever the pool claims.
+async function probeProxy(proxy, { timeoutMs }) {
+    const activeBrowser = await ensureBrowser();
+    const context = await activeBrowser.newContext({ proxy });
+    try { return await measureExitIp(context, { timeoutMs }); }
+    finally { try { await context.close(); } catch { /* the probe is over */ } }
+}
+function noExit(result) {
+    const why = [result.reason, result.freeReason].filter(Boolean).join(' / ');
+    return Object.assign(new Error(`Sin salida de red disponible (${why || 'sin motivo'})`), { status: 503, networkReason: result.reason });
+}
+// An exit found before the section is created or resumed, so the long search
+// does not hold the queue that every other section shares.
+const preassigned = new Map();
+async function networkAssignment(section) {
+    const net = ensureNetwork();
+    if (!net) return null;
+    const ready = preassigned.get(section.id);
+    if (ready) { preassigned.delete(section.id); return ready; }
+    return net.assign(section.id, { isCancelled: () => shuttingDown });
+}
+const recoveries = new Map();
+const recoveryJobs = new Set();
+function networkRetryDelays() {
+    const custom = String(process.env.PYROCK_NETWORK_RETRY_MS || '').split(',').map(Number).filter(value => Number.isInteger(value) && value > 0);
+    return custom.length ? custom : [30000, 60000, 120000, 300000];
+}
+function stopRecovery(id) {
+    const record = recoveries.get(id);
+    if (!record) return;
+    clearTimeout(record.timer);
+    record.generation++;
+    recoveries.delete(id);
+}
+function scheduleRecoveryRetry(id, record) {
+    const delays = networkRetryDelays();
+    const base = delays[Math.min(record.attempt, delays.length - 1)];
+    record.attempt++;
+    // Jitter keeps several waiting sections from asking the pool at the same instant.
+    record.timer = setTimeout(() => { record.timer = null; recoverSection(id).catch(() => {}); }, Math.round(base * (1 + Math.random() * 0.2)));
+    record.timer.unref?.();
+}
+// Replaces the exit of a section whose proxy stopped working, keeping its
+// identity, its cookies and storage and the page it was on. One recovery per
+// section at a time; closing the section or stopping the server cancels it.
+async function recoverSection(id) {
+    const net = ensureNetwork();
+    const section = sessions.get(id);
+    if (!net || !section || shuttingDown) return false;
+    let record = recoveries.get(id);
+    if (record?.running) return false;
+    if (!record) { record = { generation: 0, attempt: 0, timer: null, running: false }; recoveries.set(id, record); }
+    clearTimeout(record.timer);
+    record.timer = null;
+    record.running = true;
+    const generation = ++record.generation;
+    const cancelled = () => shuttingDown || sessions.get(id) !== section || recoveries.get(id) !== record || record.generation !== generation;
+    const job = (async () => {
+        try {
+            section.recovering = true;
+            if (section.page) {
+                section.snapshot = mergeSnapshots(await captureSnapshot(section), section.snapshot);
+                await net.reportLoss(id);
+                await serializeMutation(() => sessions.suspend(id));
+            }
+            const assignment = await net.assign(id, { isCancelled: cancelled, recovering: true });
+            if (cancelled()) { net.release(id); return false; }
+            if (!assignment.provider) { scheduleRecoveryRetry(id, record); return false; }
+            preassigned.set(id, assignment);
+            try { await serializeMutation(() => sessions.resume(id)); }
+            finally { preassigned.delete(id); }
+            if (cancelled()) return false;
+            await restoreSnapshot(section, section.snapshot);
+            section.recovering = false;
+            record.attempt = 0;
+            return true;
+        } catch (error) {
+            log.warn(`No se pudo recuperar la salida de ${id}: ${error.message}`);
+            if (!cancelled()) scheduleRecoveryRetry(id, record);
+            return false;
+        } finally { record.running = false; }
+    })();
+    recoveryJobs.add(job);
+    job.finally(() => recoveryJobs.delete(job)).catch(() => {});
+    return job;
+}
+const networkControl = {
+    recover: recoverSection,
+    idle: () => Promise.allSettled([...recoveryJobs]),
+    view: id => ensureNetwork()?.view(id) || null,
+    summary: () => ensureNetwork()?.summary() || null
+};
+let proxyHealth = null;
+function ensureProxyHealth() {
+    const net = ensureNetwork();
+    if (!net) { proxyHealth?.stop(); proxyHealth = null; return null; }
+    if (!proxyHealth) {
+        const { createProxyHealth } = require('./network/proxy-health');
+        proxyHealth = createProxyHealth({
+            sections: () => sessions.list().map(item => ({ id: item.id, ...net.view(item.id) })),
+            check: async id => {
+                const section = sessions.get(id);
+                if (!section?.context) return null;
+                return measureExitIp(section.context, { timeoutMs: 8000 });
+            },
+            recover: recoverSection,
+            onHealthy: async (id, ip) => {
+                if (!net.confirmHealth(id, ip)) await recoverSection(id);
+            }
+        });
+    }
+    return proxyHealth;
+}
 // Camoufox owns the fingerprint (user agent, headers, window size): PyRock
 // injects no Chrome-style patches, because they would contradict it.
 const sessions = createSessionManager({
     maxSessions: MAX_SESSIONS,
     async openPage(section) {
         const activeBrowser = await ensureBrowser();
-        const opened = await engine.openPage(activeBrowser, {
-            section,
-            onPopup: popup => sessions.adopt(section, popup)
-        });
+        const assignment = await networkAssignment(section);
+        if (assignment && !assignment.provider) throw noExit(assignment);
+        const pageOptions = { section, onPopup: popup => sessions.adopt(section, popup) };
+        if (assignment) {
+            pageOptions.proxy = assignment.proxy;
+            pageOptions.storageState = section.snapshot?.storageState || undefined;
+        }
+        let opened;
+        try { opened = await engine.openPage(activeBrowser, pageOptions); }
+        catch (error) { network?.release(section.id); throw error; }
+        const health = ensureProxyHealth();
+        if (health) {
+            opened.page.on?.('requestfailed', request => {
+                const failure = request?.failure?.();
+                const message = failure?.errorText || request?.errorText || '';
+                health.notifyFailure(section.id, message);
+            });
+        }
         if (shuttingDown || browser !== activeBrowser) {
             try { await engine.closeContext(opened.context); } catch (closeError) { shutdownCleanupError ||= closeError; }
+            network?.release(section.id);
             throw Object.assign(new Error('Browser unavailable'), { status: 503 });
         }
         return opened;
     },
     closeContext: context => engine.closeContext(context),
-    createController: section => createScreencastController({ getPage: () => section.page })
+    createController: section => createScreencastController({ getPage: () => section.page }),
+    // A closed section gives back its exit and stops any recovery in progress.
+    onClosed: section => { stopRecovery(section.id); network?.forget(section.id); }
 });
 async function initBrowser() {
     try {
+        // Validate hybrid settings before launching the browser. A typo in the
+        // loopback pool URL or timeout must not silently permit direct traffic.
+        ensureNetwork();
         return await serializeMutation(async () => {
             if (shuttingDown) return false;
             if (browser) {
@@ -83,6 +236,7 @@ async function initBrowser() {
             await ensureBrowser();
             if (!sessions.getDefault()) await sessions.create();
             else await sessions.restartAll();
+            ensureProxyHealth()?.start();
             return true;
         });
     } catch (error) { log.error(`Error iniciando navegador: ${error.message}`); return false; }
@@ -90,6 +244,8 @@ async function initBrowser() {
 function getSection(id) {
     const section = id ? sessions.get(id) : sessions.getDefault();
     if (!section) throw Object.assign(new Error('Sección no encontrada'), { status: 404, sectionMissing: true });
+    // While the exit is being replaced the section has no page: say so instead of failing obscurely.
+    if (section.recovering) throw Object.assign(new Error('La sección está cambiando de salida de red; reintentá en unos segundos'), { status: 503 });
     return section;
 }
 async function navigateToUrl(url, section, retryCount = 0) {
@@ -222,7 +378,24 @@ previewWss.on('connection', (socket, request) => {
 const publicDirectory = path.join(__dirname, '..', 'public');
 app.use(express.static(publicDirectory));
 app.get('/', (_req, res) => res.sendFile(path.join(publicDirectory, 'index.html')));
-app.get('/health', (_req, res) => res.json({ status: 'ok', browser: browser ? 'connected' : 'disconnected', timestamp: new Date().toISOString() }));
+app.get('/health', (_req, res) => {
+    let networkState = null;
+    try {
+        const net = ensureNetwork();
+        if (net) {
+            const summary = net.summary();
+            const states = sessions.list().map(section => net.view(section.id));
+            networkState = {
+                ...summary,
+                waiting: states.filter(item => item.state === 'waiting').length,
+                connected: states.filter(item => item.state === 'connected').length
+            };
+        }
+    } catch (error) {
+        networkState = { mode: 'hybrid', status: 'misconfigured', error: error.message };
+    }
+    res.json({ status: 'ok', browser: browser ? 'connected' : 'disconnected', network: networkState, timestamp: new Date().toISOString() });
+});
 app.use(express.json());
 function apiError(res, error) {
     const status = error.status || 500;
@@ -237,6 +410,30 @@ const measuredIps = new Map();
 // Cómo sale el navegador y qué IP usa cada sección. Con proxy rotativo la IP
 // cambia en cada petición: lo que se muestra es siempre una foto con su hora.
 function networkOverview() {
+    const net = ensureNetwork();
+    if (net) {
+        const summary = net.summary();
+        const byId = new Map(sessions.list().map(section => [section.id, section]));
+        return {
+            configured: true, host: null, port: null, mode: 'hybrid', stickyBase: null,
+            credentials: null, pool: summary.pool, freeDeadlineMs: summary.freeDeadlineMs,
+            fallbackConfigured: summary.fallbackConfigured,
+            sections: [...byId].map(([id, section]) => {
+                const state = net.view(id);
+                const connected = state.state === 'connected';
+                let port = null;
+                try { port = connected ? Number(new URL(state.proxy).port) || null : null; } catch {}
+                return {
+                    id, name: section.name, proxy: connected ? state.proxy : null, port,
+                    ip: connected ? state.ip : null, measuredAt: connected ? state.since : null,
+                    measurementError: state.state === 'waiting' ? state.reason : null,
+                    ipCount: connected ? 1 : 0, provider: connected ? state.provider : null,
+                    state: state.state, reason: state.reason, freeReason: state.freeReason,
+                    reconnects: state.reconnects, freeSearch: state.freeSearch
+                };
+            })
+        };
+    }
     const template = parseProxyTemplate(process.env.PYROCK_PROXY);
     const base = stickyBase();
     let mode = 'none';
@@ -277,6 +474,12 @@ function networkOverview() {
 app.get('/api/network', (_req, res) => res.json(networkOverview()));
 app.post('/api/network/measure', async (req, res) => {
     try {
+        if (ensureNetwork()) {
+            const health = ensureProxyHealth();
+            if (req.body?.session) await health?.checkNow(req.body.session);
+            else await health?.checkAll();
+            return res.json(networkOverview());
+        }
         const wanted = req.body?.session ? [req.body.session] : sessions.list().map(section => section.id);
         for (const id of wanted) {
             const section = sessions.get(id);
@@ -301,12 +504,26 @@ app.post('/api/network/measure', async (req, res) => {
     } catch (error) { apiError(res, error); }
 });
 app.post('/api/sessions', async (req, res) => {
+    let reserved = null;
     try {
         if (shuttingDown) throw Object.assign(new Error('Browser unavailable'), { status: 503 });
         if (!browser) await serializeMutation(() => ensureBrowser());
+        const net = ensureNetwork();
+        if (net) {
+            // Looking for an exit can take a minute: do it before taking the shared queue.
+            const id = sessions.peekNextId();
+            const assignment = await net.assign(id, { isCancelled: () => shuttingDown });
+            if (!assignment.provider) throw noExit(assignment);
+            preassigned.set(id, assignment);
+            reserved = id;
+        }
         const section = await serializeMutation(() => sessions.create(req.body || {}));
         res.status(201).json({ success: true, session: sessions.list().find(item => item.id === section.id) });
     } catch (error) { apiError(res, error); }
+    finally {
+        // An exit that was found but never used (invalid name, limit reached) goes back.
+        if (reserved && preassigned.delete(reserved)) network?.release(reserved);
+    }
 });
 app.delete('/api/sessions/:id', async (req, res) => {
     try { await serializeMutation(() => sessions.close(req.params.id)); res.json({ success: true }); } catch (error) { apiError(res, error); }
@@ -353,6 +570,7 @@ async function stopServer() {
     shuttingDown = true;
     stopPromise = (async () => {
         let error = null;
+        for (const id of recoveries.keys()) stopRecovery(id);
         for (const section of sessions.list()) { try { await sessions.get(section.id).controller.close(); } catch (cause) { error ||= cause; } }
         for (const socket of previewWss.clients) { try { socket.close(1001, 'Server shutting down'); } catch {} socket.terminate(); }
         await new Promise(resolve => previewWss.close(() => resolve()));
@@ -367,5 +585,5 @@ async function stopServer() {
 }
 process.on('SIGINT', async () => { log.info('Cerrando servidor...'); await stopServer(); process.exit(0); });
 process.on('SIGTERM', async () => { log.info('Cerrando servidor...'); await stopServer(); process.exit(0); });
-module.exports = { startServer, stopServer, app, server, previewUpgradeAllowed };
+module.exports = { startServer, stopServer, app, server, previewUpgradeAllowed, networkControl };
 if (require.main === module) startServer().catch(error => { log.error(`Error iniciando servidor: ${error.message}`); process.exit(1); });
