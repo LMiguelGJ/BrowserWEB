@@ -26,7 +26,7 @@ test('public sessions API lists default and creates isolated sections', async t 
     const listing = await fetch(`${base}/api/sessions`);
     assert.equal(listing.status, 200);
     const first = await listing.json();
-    assert.deepEqual({ default: first.default, max: first.max, ids: first.sessions.map(s => s.id) }, { default: 's1', max: 5, ids: ['s1'] });
+    assert.deepEqual({ default: first.default, max: first.max, ids: first.sessions.map(s => s.id) }, { default: 's1', max: 0, ids: ['s1'] });
     const badName = await fetch(`${base}/api/sessions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: '   ' }) });
     assert.equal(badName.status, 400);
     const created = await fetch(`${base}/api/sessions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: '  Cuenta  ' }) });

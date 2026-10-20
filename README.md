@@ -144,7 +144,7 @@ docker run --rm -p 3000:3000 --env-file .env -v pyrock-state:/app/state pyrock
    - Usa la barra izquierda para agregar secciones, cambiar entre ellas y cerrar una sección con confirmación. Siempre debe quedar al menos una sección abierta.
    - Cada sección tiene su propia página y cookies; los controles, el preview y el reinicio actúan sobre la sección seleccionada. Un script continúa en la sección donde empezó aunque cambies la selección.
    - Los nombres opcionales tienen entre 1 y 24 caracteres; el nombre inicial es `Sección N`. La selección activa se recuerda en este navegador web, pero las secciones viven solo en memoria del servidor y se pierden al reiniciarlo.
-   - Las secciones comparten el proceso Camoufox y sus recursos de CPU/memoria, pero mantienen contextos aislados. En modo híbrido, cada una recibe una salida pública verificada y distinta; si no hay una salida disponible, queda esperando y no se conecta directamente. El máximo predeterminado es 5 secciones; se configura con `MAX_SESSIONS` (valores aceptados: 1–10).
+   - Las secciones comparten el proceso Camoufox y sus recursos de CPU/memoria, pero mantienen contextos aislados. En modo híbrido, cada una recibe una salida pública verificada y distinta; si no hay una salida disponible, queda esperando y no se conecta directamente. **No hay tope de secciones**: abrís todas las que necesites. Si querés un límite, `MAX_SESSIONS` lo fija (por ejemplo `MAX_SESSIONS=20`).
 
 6. **Registro y scripts (paneles laterales)**
    - Las pestañas 📋 y 📜 del borde derecho abren, deslizándose, el registro de actividad y el control de scripts.
@@ -152,6 +152,8 @@ docker run --rm -p 3000:3000 --env-file .env -v pyrock-state:/app/state pyrock
    - Se cierra con ✕, con Escape o volviendo a pulsar su pestaña. Abrir una pestaña cierra la otra.
    - Un script sigue ejecutándose con su panel cerrado.
    - Si llega un error mientras el registro está cerrado, aparece un punto rojo en 📋 hasta que lo abras.
+   - **Registro por sección**: el panel muestra el registro de la sección activa y el interruptor `todas` muestra el de todas. Al cambiar de sección, la vista sigue a la sección nueva; el punto rojo cuenta los errores de lo que estás viendo.
+   - **Scripts por sección**: cada sección tiene su propio script, su archivo y su progreso. El editor muestra el de la sección activa y lo que escribís queda guardado al salir. Dos secciones pueden correr scripts **a la vez**, cada uno en la suya, y «Detener» frena el de la sección activa.
 
 ### Transporte y límites
 
@@ -189,7 +191,7 @@ Hay **un proceso Camoufox compartido** y varias secciones independientes, cada u
 
 - `NODE_ENV` - Entorno de ejecución (production/development)
 - `PORT` - Puerto del servidor (default: 3000)
-- `MAX_SESSIONS` - Máximo de secciones de navegador (default: 5; valores válidos: 1–10; otros valores usan el default)
+- `MAX_SESSIONS` - Tope de secciones de navegador. **Sin la variable no hay tope** (la API responde `max: 0`); con un número, ese es el límite.
 - `CAMOUFOX_HEADLESS` - Modo del navegador: `true` (default), `false` o `virtual` (Xvfb, el que usa la imagen Docker)
 - `CAMOUFOX_OS` - Sistema operativo simulado en la huella (default: el del host)
 - `CAMOUFOX_LOCALE` - Locale de la huella (default: `es-ES`)

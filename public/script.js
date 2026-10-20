@@ -1,9 +1,10 @@
 // Instancia de PyRockHTTP
 let pyrock = null;
 
-// Instancia del parser de scripts
-let scriptParser = null;
-let isScriptRunning = false;
+// Cada sección tiene su script: contenido, archivo, estado y parser propio.
+// Así dos secciones pueden correr scripts a la vez, cada uno en la suya.
+const scriptStates = new Map();
+let scriptParserAvailable = false;
 
 // Side panels (log and scripts): only one is open at a time.
 const PANEL_TABS = { logPanel: 'tabLog', scriptPanel: 'tabScripts', netPanel: 'tabNet' };
@@ -37,7 +38,7 @@ let pendingFrameRender = false;
 let queuedManualScreenshot = null;
 let activeSessionId = localStorage.getItem('pyrock.activeSession');
 let sessionRecords = [];
-let sessionMaximum = 5;
+let sessionMaximum = 0;
 let closeConfirmTimer = null;
 let armedCloseButton = null;
 
@@ -59,25 +60,64 @@ function updateStatus(text, connected) {
     }
 }
 
+// El registro es de la app, pero cada línea sabe de qué sección es: el panel
+// muestra el de la sección activa y hay un interruptor para verlos todos.
+const logEntries = [];
+// La primera línea del registro: la que el HTML mostraba antes de que el
+// script lo dibujara, y que el redibujado no puede perder.
+logEntries.push({ sessionId: null, sectionName: '', message: 'Sistema iniciado - vista previa en vivo disponible al conectar', type: 'info', at: '' });
+const LOG_MEMORY_LIMIT = 200;
+const LOG_VISIBLE_LIMIT = 50;
+let logScopeAll = false;
+let logScopeRendered = null;
+
 // Agregar entrada al log
-function addLog(message, type = 'info') {
-    const timestamp = new Date().toLocaleTimeString();
-    const logEntry = document.createElement('div');
-    logEntry.className = `log-entry ${type}`;
-    logEntry.textContent = `[${timestamp}] ${message}`;
+function addLog(message, type = 'info', sessionId = activeSessionId) {
+    const section = sessionId ? sessionRecords.find(item => item.id === sessionId) : null;
+    logEntries.push({
+        sessionId: sessionId || null,
+        sectionName: section?.name || '',
+        message,
+        type,
+        at: new Date().toLocaleTimeString()
+    });
+    while (logEntries.length > LOG_MEMORY_LIMIT) logEntries.shift();
+    renderLog(true);
+}
 
-    logContainer.appendChild(logEntry);
+function visibleLogEntries() {
+    if (logScopeAll) return logEntries;
+    return logEntries.filter(entry => !entry.sessionId || entry.sessionId === activeSessionId);
+}
+
+function renderLog(force = false) {
+    const scope = logScopeAll ? 'all' : (activeSessionId || 'none');
+    // El refresco periódico no reconstruye el registro: el operador puede
+    // estar leyéndolo y no debe ver la lista moverse sola.
+    if (!force && scope === logScopeRendered) return;
+    logScopeRendered = scope;
+    const entries = visibleLogEntries();
+    const nodes = entries.slice(-LOG_VISIBLE_LIMIT).map(entry => {
+        const node = document.createElement('div');
+        node.className = `log-entry ${entry.type}`;
+        // Al ver todas las secciones, cada línea dice de cuál es.
+        const who = logScopeAll && entry.sectionName ? ` ${entry.sectionName} ·` : '';
+        node.textContent = entry.at ? `[${entry.at}]${who} ${entry.message}` : entry.message;
+        return node;
+    });
+    logContainer.replaceChildren(...nodes);
     logContainer.scrollTop = logContainer.scrollHeight;
+    updateLogBadge(entries);
+}
 
-    // An error logged while the log panel is closed lights the badge on its tab.
-    if (type === 'error' && openPanelId !== 'logPanel') {
-        logBadge.hidden = false;
+// El badge avisa de lo que el operador tiene delante: un error en la sección
+// abierta, o en cualquiera cuando la vista muestra todas.
+function updateLogBadge(entries = visibleLogEntries()) {
+    if (openPanelId === 'logPanel') {
+        logBadge.hidden = true;
+        return;
     }
-
-    // Mantener solo las últimas 50 entradas
-    while (logContainer.children.length > 50) {
-        logContainer.removeChild(logContainer.firstChild);
-    }
+    logBadge.hidden = !entries.some(entry => entry.type === 'error');
 }
 
 function setPanelState(panelId, open) {
@@ -268,6 +308,7 @@ function togglePanel(panelId) {
     setPanelState(panelId, true);
     if (panelId === 'logPanel') {
         logBadge.hidden = true;
+        renderLog(true);
         logContainer.scrollTop = logContainer.scrollHeight;
     }
     if (panelId === 'netPanel') openNetworkPanel();
@@ -443,6 +484,15 @@ document.getElementById('tabLog').addEventListener('click', () => togglePanel('l
 document.getElementById('tabScripts').addEventListener('click', () => togglePanel('scriptPanel'));
 document.getElementById('tabNet').addEventListener('click', () => togglePanel('netPanel'));
 document.getElementById('logPanelClose').addEventListener('click', closePanel);
+document.getElementById('logScope').addEventListener('click', () => {
+// El interruptor cambia entre el registro de la sección activa y el de
+// todas las secciones.
+logScopeAll = !logScopeAll;
+const scope = document.getElementById('logScope');
+scope.setAttribute('aria-pressed', logScopeAll ? 'true' : 'false');
+scope.textContent = logScopeAll ? 'todas' : 'esta';
+renderLog(true);
+});
 document.getElementById('scriptPanelClose').addEventListener('click', closePanel);
 document.getElementById('netPanelClose').addEventListener('click', closePanel);
 document.getElementById('netMeasure').addEventListener('click', measureNetwork);
@@ -528,12 +578,15 @@ preview.addEventListener('click', (event) => {
 async function refreshSessions() {
     if (!pyrock || !pyrock.isConnected || typeof pyrock.listSessions !== 'function') return;
     const result = await pyrock.listSessions();
-    sessionRecords = result.sessions || []; sessionMaximum = result.max || 5;
+    sessionRecords = result.sessions || []; sessionMaximum = result.max ?? 0;
     const deckBus = document.getElementById('deckBus');
     if (deckBus) deckBus.textContent = `PVW → PGM · ${sessionRecords.find(s => s.id === activeSessionId)?.name || '—'}`;
     const list = document.getElementById('sessionList');
     const add = document.getElementById('sessionAdd');
-    add.disabled = sessionRecords.length >= sessionMaximum; add.title = add.disabled ? 'Límite de secciones alcanzado' : 'Agregar sección';
+    // Un máximo de 0 significa que no hay tope de secciones.
+    const capped = sessionMaximum > 0;
+    add.disabled = capped && sessionRecords.length >= sessionMaximum;
+    add.title = add.disabled ? 'Límite de secciones alcanzado' : 'Agregar sección';
     // La lista solo se reconstruye cuando cambió: el refresco periódico no
     // puede borrar el nombre que se está escribiendo ni la confirmación de un
     // cierre a medio confirmar.
@@ -585,7 +638,15 @@ async function refreshSessions() {
 }
 function activateSession(section) {
     if (!section) return;
+    // El editor y el registro son de la sección: lo que se estaba escribiendo
+    // se guarda en la sección que se deja y se carga el de la que se entra.
+    const previousId = activeSessionId;
+    if (previousId) scriptState(previousId).content = scriptEditor.value;
     activeSessionId = section.id; localStorage.setItem('pyrock.activeSession', section.id);
+    // El registro sigue a la sección activa.
+    renderLog();
+    scriptEditor.value = scriptState(section.id).content;
+    updateScriptUi(section.id);
     pyrock.switchSession(section.id); pendingFrameRender = false; queuedManualScreenshot = null;
     preview.style.display = 'none'; loadingText.style.display = 'block'; loadingText.textContent = 'Cargando sección…';
     const field = document.getElementById('urlInput');
@@ -725,12 +786,8 @@ window.addEventListener('load', async () => {
 
     // Inicializar parser de scripts
     if (typeof PyRockScriptParser !== 'undefined') {
-        // Pasar funciones de indicador visual al parser
-        const visualIndicators = {
-            showClickIndicator: showClickIndicator,
-            getIndicatorPosition: getIndicatorPosition
-        };
-        scriptParser = new PyRockScriptParser(pyrock, visualIndicators);
+        // Cada sección tendrá su propio parser, con su cliente y su estado.
+        scriptParserAvailable = true;
         addLog('Parser de scripts inicializado con indicadores visuales', 'success');
     } else {
         addLog('Advertencia: Parser de scripts no disponible', 'error');
@@ -744,6 +801,40 @@ window.addEventListener('pagehide', () => {
 
 // ===== FUNCIONES DE MANEJO DE SCRIPTS =====
 
+// El estado de scripts de una sección: su contenido, su archivo, si está
+// corriendo y su propio parser.
+function scriptState(sectionId = activeSessionId) {
+    const id = sectionId || 'default';
+    if (!scriptStates.has(id)) {
+        scriptStates.set(id, { id, content: '', fileName: '', running: false, status: 'Listo', progress: '', parser: null });
+    }
+    return scriptStates.get(id);
+}
+
+// El parser de una sección: el suyo, con el cliente de esa sección y con el
+// indicador de clic solo si esa sección está en pantalla.
+function scriptParserFor(sectionId) {
+    const state = scriptState(sectionId);
+    if (!state.parser) {
+        const visualIndicators = {
+            showClickIndicator: (...args) => { if (activeSessionId === state.id) showClickIndicator(...args); },
+            getIndicatorPosition
+        };
+        state.parser = new PyRockScriptParser(pyrock.forSession(state.id), visualIndicators);
+    }
+    return state.parser;
+}
+
+// El panel de scripts muestra siempre el de la sección activa.
+function updateScriptUi(sectionId = activeSessionId) {
+    const state = scriptState(sectionId);
+    if (state.id !== activeSessionId) return;
+    scriptStatus.textContent = `Estado: ${state.status}`;
+    scriptProgress.textContent = state.progress;
+    executeBtn.disabled = state.running;
+    stopBtn.disabled = !state.running;
+}
+
 // Cargar script desde archivo
 function loadScriptFile() {
     scriptFileInput.click();
@@ -755,27 +846,21 @@ scriptFileInput.addEventListener('change', (event) => {
     if (file) {
         const reader = new FileReader();
         reader.onload = (e) => {
-            // Limpiar completamente el estado anterior
-            if (isScriptRunning) {
-                stopScript();
+            // El archivo cargado es el de la sección activa: las otras
+            // secciones no se tocan.
+            const state = scriptState();
+            if (state.running) stopScript();
+            if (state.parser) {
+                state.parser.commands = [];
+                state.parser.currentLine = 0;
             }
-            
-            // Restablecer variables y estado
-            if (scriptParser) {
-                scriptParser.commands = [];
-                scriptParser.currentLine = 0;
-            }
-            
-            // Reemplazar completamente el contenido del editor
             scriptEditor.value = e.target.result;
-            
-            // Restablecer UI
-            updateScriptStatus('Script cargado');
-            updateScriptProgress('');
-            executeBtn.disabled = false;
-            stopBtn.disabled = true;
-            
-            addLog(`Script cargado: ${file.name} - Editor restablecido`, 'success');
+            state.content = e.target.result;
+            state.fileName = file.name;
+            state.status = 'Script cargado';
+            state.progress = '';
+            updateScriptUi(state.id);
+            addLog(`Script cargado: ${file.name} - Editor restablecido`, 'success', state.id);
         };
         reader.readAsText(file);
     }
@@ -786,7 +871,7 @@ scriptFileInput.addEventListener('change', (event) => {
 
 // Ejecutar script
 async function executeScript() {
-    if (!scriptParser) {
+    if (!scriptParserAvailable) {
         addLog('Error: Parser de scripts no disponible', 'error');
         return;
     }
@@ -796,100 +881,95 @@ async function executeScript() {
         return;
     }
 
+    const state = scriptState();
     const scriptContent = scriptEditor.value.trim();
     if (!scriptContent) {
-        addLog('Error: No hay script para ejecutar', 'error');
+        addLog('Error: No hay script para ejecutar', 'error', state.id);
         return;
     }
 
-    if (isScriptRunning) {
-        addLog('Ya hay un script ejecutándose', 'error');
+    if (state.running) {
+        addLog('Ya hay un script ejecutándose en esta sección', 'error', state.id);
         return;
     }
 
-    const previousClient = scriptParser.pyRock;
-    let originalIndicator;
+    const parser = scriptParserFor(state.id);
+    // El log de un script pertenece a la sección en la que corre, no a la que
+    // esté en pantalla.
+    const log = (message, type) => addLog(message, type, state.id);
     try {
-        const runSessionId = activeSessionId;
-        scriptParser.pyRock = pyrock.forSession(runSessionId);
-        originalIndicator = scriptParser.visualIndicators?.showClickIndicator;
-        if (scriptParser.visualIndicators) scriptParser.visualIndicators.showClickIndicator = (...args) => { if (activeSessionId === runSessionId) originalIndicator?.(...args); };
-        isScriptRunning = true;
-        executeBtn.disabled = true;
-        stopBtn.disabled = false;
-        updateScriptStatus('Ejecutando...');
+        state.content = scriptContent;
+        state.running = true;
+        state.status = 'Ejecutando...';
+        state.progress = '';
+        updateScriptUi(state.id);
 
-        addLog('Iniciando ejecución de script', 'info');
+        log('Iniciando ejecución de script', 'info');
 
         // Cargar y validar script
-        const commands = scriptParser.loadScript(scriptContent);
+        const commands = parser.loadScript(scriptContent);
         
-        addLog(`Script validado: ${commands.length} comandos encontrados`, 'success');
+        log(`Script validado: ${commands.length} comandos encontrados`, 'success');
 
         // Ejecutar comandos con soporte para saltos y bucles
-        scriptParser.currentLine = 0;
+        parser.currentLine = 0;
         
-        while (scriptParser.currentLine < commands.length && isScriptRunning) {
-            const command = commands[scriptParser.currentLine];
-            updateScriptProgress(`Comando ${scriptParser.currentLine + 1}/${commands.length}: Línea ${command.lineNumber}`);
+        while (parser.currentLine < commands.length && state.running) {
+            const command = commands[parser.currentLine];
+            state.progress = `Comando ${parser.currentLine + 1}/${commands.length}: Línea ${command.lineNumber}`;
+            updateScriptUi(state.id);
             
-            addLog(`Ejecutando línea ${command.lineNumber}: ${command.originalLine}`, 'info');
+            log(`Ejecutando línea ${command.lineNumber}: ${command.originalLine}`, 'info');
 
             try {
-                await scriptParser.executeCommand(command);
+                await parser.executeCommand(command);
                 
                 // Solo avanzar si no hubo salto (loop)
-                const previousLine = scriptParser.currentLine;
-                scriptParser.currentLine++;
+                const previousLine = parser.currentLine;
+                parser.currentLine++;
                 
                 // Si hubo un salto, currentLine ya fue modificado por el comando
-                if (scriptParser.currentLine !== previousLine + 1) {
+                if (parser.currentLine !== previousLine + 1) {
                     continue; // No hacer pausa en saltos
                 }
                 
                 // Pequeña pausa entre comandos para mejor visualización
-                if (scriptParser.currentLine < commands.length && isScriptRunning) {
+                if (parser.currentLine < commands.length && state.running) {
                     await new Promise(resolve => setTimeout(resolve, 100));
                 }
             } catch (error) {
-                addLog(`Error ejecutando comando: ${error.message}`, 'error');
+                log(`Error ejecutando comando: ${error.message}`, 'error');
                 break;
             }
         }
 
-        if (isScriptRunning) {
-            addLog('Script ejecutado completamente', 'success');
-            updateScriptStatus('Completado');
+        if (state.running) {
+            log('Script ejecutado completamente', 'success');
+            state.status = 'Completado';
         } else {
-            updateScriptStatus('Cancelado');
+            state.status = 'Cancelado';
         }
 
     } catch (error) {
-        addLog(`Error en script: ${error.message}`, 'error');
-        updateScriptStatus('Error');
+        state.status = 'Error';
+        addLog(`Error en script: ${error.message}`, 'error', state.id);
     } finally {
-        // Restablecer completamente el estado
-        if (scriptParser) { scriptParser.pyRock = previousClient; if (scriptParser.visualIndicators && originalIndicator) scriptParser.visualIndicators.showClickIndicator = originalIndicator; }
-        isScriptRunning = false;
+        state.running = false;
 
         // Limpiar parser
-        if (scriptParser) {
-            scriptParser.commands = [];
-            scriptParser.currentLine = 0;
+        if (parser) {
+            parser.commands = [];
+            parser.currentLine = 0;
         }
-        
-        // Restablecer UI
-        executeBtn.disabled = false;
-        stopBtn.disabled = true;
-        updateScriptProgress('');
+        state.progress = '';
+        updateScriptUi(state.id);
         
         // Si no hay error específico, marcar como listo
-        if (scriptStatus.textContent.includes('Completado') || 
-            scriptStatus.textContent.includes('Cancelado') || 
-            scriptStatus.textContent.includes('Error')) {
+        if (state.status === 'Completado' || state.status === 'Cancelado' || state.status === 'Error') {
             setTimeout(() => {
-                if (!isScriptRunning) {
-                    updateScriptStatus('Listo');
+                if (!state.running) {
+                    state.status = 'Listo';
+                    updateScriptUi(state.id);
                 }
             }, 2000);
         }
@@ -898,39 +978,15 @@ async function executeScript() {
 
 // Parar ejecución de script
 function stopScript() {
-    if (isScriptRunning) {
-        isScriptRunning = false;
-        addLog('Deteniendo ejecución de script...', 'info');
-        
-        // Limpiar completamente todas las variables y estado
-        setTimeout(() => {
-            // Restablecer variables globales
-
-            // Limpiar parser si existe
-            if (scriptParser) {
-                scriptParser.commands = [];
-                scriptParser.currentLine = 0;
-            }
-            
-            // Restablecer UI completamente
-            updateScriptStatus('Listo');
-            updateScriptProgress('');
-            executeBtn.disabled = false;
-            stopBtn.disabled = true;
-            
-            addLog('Script detenido - Variables restablecidas', 'info');
-        }, 500);
-    }
+    const state = scriptState();
+    if (!state.running) return;
+    // El loop ve que ya no corre y termina; su finally deja el estado limpio.
+    state.running = false;
+    addLog('Deteniendo ejecución de script...', 'info', state.id);
+    updateScriptUi(state.id);
 }
 
-// Actualizar estado del script
-function updateScriptStatus(status) {
-    scriptStatus.textContent = `Estado: ${status}`;
-}
-
-// Actualizar progreso del script
-function updateScriptProgress(progress) {
-    scriptProgress.textContent = progress;
-}
+// El estado y el progreso del script viven en el estado de su sección; la
+// UI los muestra a través de updateScriptUi.
 
 // Script state is restored by executeScript's finally block.

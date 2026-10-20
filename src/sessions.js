@@ -1,10 +1,11 @@
 'use strict';
 
-function createSessionManager({ openPage, closeContext, createController, onClosed, onReady, maxSessions = 5 }) {
+function createSessionManager({ openPage, closeContext, createController, onClosed, onReady, maxSessions = 0 }) {
     if (typeof openPage !== 'function' || typeof closeContext !== 'function' || typeof createController !== 'function') {
         throw new TypeError('openPage, closeContext and createController are required');
     }
-    const limit = Math.min(10, Math.max(1, Number.isInteger(maxSessions) ? maxSessions : 5));
+    // Un tope de 0 (o ausente) significa sin límite.
+    const limit = Number.isInteger(maxSessions) && maxSessions > 0 ? maxSessions : Infinity;
     const sessions = new Map();
     let nextId = 1;
     let queue = Promise.resolve();

@@ -26,8 +26,8 @@ Cabina de operación local: control directo a nivel de sección con aislamiento 
 
 ## Capabilities and Constraints
 
-- Sidebar de secciones: crear, cambiar, cerrar (máximo 5 por `MAX_SESSIONS`), con confirmación en dos clics.
-- Preview en vivo CDP con clic directo en coordenadas; controles de teclado (flechas, escribir, Enter, Tab, Escape); reinicio de sección; logs y scripts en panels laterales derechos.
+- Sidebar de secciones: crear, cambiar, cerrar (sin tope de secciones; `MAX_SESSIONS` lo fija si se quiere un límite), con confirmación en dos clics.
+- Preview en vivo CDP con clic directo en coordenadas; controles de teclado (flechas, escribir, Enter, Tab, Escape); reinicio de sección; logs y scripts por sección en panels laterales derechos.
 - Sin autenticación, sin usuarios: es una herramienta personal en localhost.
 - Compatibilidad: las llamadas REST sin `session` van a la sección default; no romper ese contrato.
 

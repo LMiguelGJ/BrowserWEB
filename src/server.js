@@ -23,9 +23,12 @@ const camoufoxLoader = () => {
     const seam = process.env.PYROCK_CAMOUFOX_MODULE;
     return seam ? import(pathToFileURL(path.resolve(seam)).href) : import('camoufox-js');
 };
+// Sin `MAX_SESSIONS` no hay tope de secciones: cada una es un contexto del
+// navegador y lo que las limita es la memoria de la máquina, no el código.
+// El valor 0 (o ausente) significa sin límite; un número fija ese tope.
 const rawLimit = process.env.MAX_SESSIONS;
-const parsedLimit = rawLimit && /^\d+$/.test(rawLimit) ? Number(rawLimit) : NaN;
-const MAX_SESSIONS = Number.isInteger(parsedLimit) && parsedLimit >= 1 ? Math.min(parsedLimit, 10) : 5;
+const parsedLimit = rawLimit && /^\d+$/.test(rawLimit) ? Number(rawLimit) : 0;
+const MAX_SESSIONS = Number.isInteger(parsedLimit) && parsedLimit >= 1 ? parsedLimit : 0;
 let browser = null;
 let mutationQueue = Promise.resolve();
 let shuttingDown = false;

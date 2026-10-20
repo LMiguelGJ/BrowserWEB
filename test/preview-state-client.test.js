@@ -157,6 +157,53 @@ test('the hybrid network panel names the provider without balance wording and wi
     assert.doesNotMatch(text, /user:|pw@/i);
 });
 
+test('each section has its own script, and two of them can run at the same time', async () => {
+    const sessions = [{ id: 's1', name: 'Una', url: '' }, { id: 's2', name: 'Dos', url: '' }];
+    let release;
+    const gate = new Promise(resolve => { release = resolve; });
+    const h = createScriptHarness({ sessions, defaultId: 's1', onExecute: () => gate });
+    await h.load();
+    await h.api().refreshSessions();
+    // The editor belongs to the section that is on screen.
+    h.elements.get('scriptEditor').value = 'Sleep(100)';
+    await h.api().activateSession(sessions[1]);
+    assert.equal(h.elements.get('scriptEditor').value, '', 'the second section starts with its own script');
+    h.elements.get('scriptEditor').value = 'Sleep(200)';
+    await h.api().activateSession(sessions[0]);
+    assert.equal(h.elements.get('scriptEditor').value, 'Sleep(100)', 'the first section kept its own script');
+
+    // A script running in one section does not stop the other one.
+    const first = h.api().executeScript();
+    await Promise.resolve();
+    await h.api().activateSession(sessions[1]);
+    const second = h.api().executeScript();
+    await Promise.resolve();
+    release();
+    await Promise.all([first, second]);
+    const executed = h.operations.filter(operation => operation[0] === 'execute').map(operation => operation[1]);
+    assert.deepEqual(executed, ['s1', 's2'], 'both scripts ran, each one in its own section');
+    const logged = h.elements.get('logContainer').children.map(entry => entry.textContent).join('\n');
+    assert.doesNotMatch(logged, /Ya hay un script ejecutándose/, 'a script in another section is not a reason to refuse');
+});
+
+test('the log shows the active section, and every section on demand', async () => {
+    const sessions = [{ id: 's1', name: 'Una', url: '' }, { id: 's2', name: 'Dos', url: '' }];
+    const h = createScriptHarness({ sessions, defaultId: 's1' });
+    await h.load();
+    await h.api().refreshSessions();
+    h.context.addLog('de la uno', 'info', 's1');
+    h.context.addLog('de la dos', 'info', 's2');
+    const text = () => h.elements.get('logContainer').children.map(entry => entry.textContent).join('\n');
+    assert.match(text(), /de la uno/);
+    assert.doesNotMatch(text(), /de la dos/, 'the other section is not in the view');
+    await h.api().activateSession(sessions[1]);
+    assert.match(text(), /de la dos/, 'the view follows the active section');
+    assert.doesNotMatch(text(), /de la uno/);
+    h.elements.get('logScope').dispatch('click');
+    assert.match(text(), /de la uno/, 'the toggle shows every section');
+    assert.match(text(), /de la dos/);
+});
+
 test('the hybrid panel offers a small button to ask again for an IP per section', async () => {
     const h = createScriptHarness({
         network: {

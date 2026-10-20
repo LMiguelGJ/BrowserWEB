@@ -363,14 +363,19 @@ function createCamoufoxEngine({ loader = () => import('camoufox-js'), launchOpti
             try {
                 const raw = await context.newPage();
                 if (logger) {
+                    // Every message about a page says which section it belongs
+                    // to: without that the log mixes the sections and there is
+                    // no way to tell them apart.
+                    const label = section?.name ? String(section.name).replace(/\s+/g, ' ').trim() : '';
+                    const tag = label ? `[${label}] ` : '';
                     // A blank preview is the symptom; these are the causes.
                     raw.on('console', message => {
-                        if (message.type() === 'error') logger.warn(`error de consola en la página: ${message.text().slice(0, 160)}`);
+                        if (message.type() === 'error') logger.warn(`${tag}error de consola en la página: ${message.text().slice(0, 160)}`);
                     });
-                    raw.on('pageerror', error => logger.warn(`excepción en la página: ${error.message.slice(0, 160)}`));
+                    raw.on('pageerror', error => logger.warn(`${tag}excepción en la página: ${error.message.slice(0, 160)}`));
                     raw.on('requestfailed', request => {
                         const reason = request.failure()?.errorText || 'falló';
-                        logger.warn(`petición fallida: ${request.url().slice(0, 120)} (${reason})`);
+                        logger.warn(`${tag}petición fallida: ${request.url().slice(0, 120)} (${reason})`);
                     });
                 }
                 const page = wrapPage(raw, { logger });

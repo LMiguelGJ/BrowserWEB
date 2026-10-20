@@ -766,6 +766,25 @@ input[type="number"] {
     text-transform: uppercase;
 }
 
+/* The switch between the log of the active section and the log of all of them. */
+.log-scope {
+    margin-left: auto;
+    padding: 2px 8px;
+    border: 1px solid var(--console-line);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--ink-mid);
+    font-family: var(--font-data);
+    font-size: 11px;
+    line-height: 1.6;
+    cursor: pointer;
+}
+
+.log-scope[aria-pressed="true"] {
+    color: var(--ink-hi);
+    border-color: var(--ink-low);
+}
+
 .side-panel-close {
     width: 32px;
     height: 32px;

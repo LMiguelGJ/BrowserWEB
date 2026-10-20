@@ -50,7 +50,7 @@ PYROCK_GEOIP=1
 | Variable | Default | Para qué |
 |---|---|---|
 | `PORT` | `3000` | Puerto del servidor |
-| `MAX_SESSIONS` | `5` | Secciones simultáneas (1-10) |
+| `MAX_SESSIONS` | sin tope | Secciones simultáneas: sin la variable no hay límite; con un número, ese es el tope |
 | `PYROCK_GEOIP` | apagado | `1` = geolocalización coherente con la IP del proxy |
 | `PYROCK_NETWORK_RETRY_MS` | `30000,60000,120000,300000` | Espera entre reintentos de recuperación |
 | `PYROCK_SETTLE_TIMEOUT_MS` | `20000` | Cuánto espera el servidor a que la página *se vea* |

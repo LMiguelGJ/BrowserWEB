@@ -225,6 +225,26 @@ test('the page console errors and failed requests reach the log', async () => {
     assert.ok(warnings.some(message => /cdn\.example\/x\.js/.test(message)), 'the failed request is reported');
 });
 
+test('the messages of a page say which section they belong to', async () => {
+    const warnings = [];
+    const browser = {
+        newContext: async () => ({
+            newPage: async () => fakePlaywrightPage(),
+            close: async () => {}
+        }),
+        close: async () => {}
+    };
+    const engine = createCamoufoxEngine({
+        loader: async () => ({ Camoufox: async () => browser }),
+        logger: { warn: message => warnings.push(message), info: () => {}, error: () => {} }
+    });
+    const opened = await engine.openPage(await engine.launch(), { section: { id: 's2', name: 'Sección 2' } });
+    opened.page.raw.emit('console', { type: () => 'error', text: () => 'boom en la página' });
+    opened.page.raw.emit('requestfailed', { url: () => 'https://cdn.example/x.js', failure: () => ({ errorText: 'net::ERR_BLOCKED_BY_CLIENT' }) });
+    assert.ok(warnings.some(message => /^\[Sección 2\] error de consola/.test(message)), 'the console error names the section');
+    assert.ok(warnings.some(message => /^\[Sección 2\] petición fallida/.test(message)), 'the failed request names the section');
+});
+
 test('diagnosePage explains a blank preview: a page stuck loading never ran its app', async () => {
     const { diagnosePage } = require('../src/engines/camoufox');
     const page = fakePlaywrightPage();

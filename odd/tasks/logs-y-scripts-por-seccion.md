@@ -1,0 +1,31 @@
+# Logs y scripts separados por sección — ODD execution
+
+Objetivo: que el registro y los scripts pertenezcan a cada sección, no al app entero.
+Baseline: `926cdbb` en `main` (rama `feature/proxy-scraper-hibrido` ya fusionada).
+Entrega: commit por unidad de trabajo en `main`, push autorizado, sin PR ni despliegue. Runner: `npm test`.
+
+## Specs
+
+S1. Petición del usuario (verbatim): «ademas tanto los log como los script deben estar separados por cada una por seccion analiza y dime».
+S2. Decisión del usuario (verbatim): «Almacén etiquetado + filtro (recomendado)» — el registro es un solo almacén donde cada entrada sabe su sección, y la vista muestra la sección activa con la opción de ver todas.
+S3. Decisión del usuario (verbatim): «Un script por sección, en paralelo (recomendado)» — cada sección tiene su script, su archivo, su progreso y su parser, y pueden correr varios a la vez.
+S4. Decisión del usuario (verbatim): «Sí, etiquetar el log del contenedor (recomendado)» — las líneas del servidor salen como `[Sección N] ...`.
+S5. Hallazgo previo (contexto): hoy el log es un único `logContainer` (`public/index.html:143`) con las últimas 50 entradas globales y sin atribución (`public/script.js:63-81`); el editor de scripts, el archivo, el parser y `isScriptRunning` son globales (`public/script.js:5-6`, `public/index.html:172`), por lo que solo corre un script en toda la app (`public/script.js:806-808`) y cargar un archivo borra el cargado en otra sección.
+S6. Restricción: el script sigue atado a la sección con la que arrancó (`pyrock.forSession(runSessionId)`, `public/script.js:812-815`) y el indicador de clic solo se muestra si esa sección está activa.
+
+## Tasks
+
+T1 | S2,S3,S4 | servidor: etiquetar los mensajes por página con la sección | done | `src/engines/camoufox.js`: los mensajes salen como `[Sección N] ...`.
+T2 | S2 | cliente: registro etiquetado con vista filtrada | done | `public/script.js` (almacén + render + interruptor), `public/index.html`, `public/styles.css`.
+T3 | S3 | cliente: un script por sección, corriendo en paralelo | done | Estado por sección en `public/script.js`: contenido, archivo, corriendo, progreso y parser propio.
+T4 | S1-S4 | verificación, documentación y entrega | in_progress | Suite completa, README, diff-check, commit y push.
+
+## Log
+
+L1. Petición original del usuario, verbatim: «ademas tanto los log como los script deben estar separados por cada una por seccion analiza y dime». El análisis se entregó antes de implementar: el registro es un almacén global sin atribución, los scripts son un estado global con un solo «corriendo» en toda la app, y el log del contenedor sale sin nombre de sección.
+L2. Decisiones del usuario, verbatim: «Almacén etiquetado + filtro (recomendado)», «Un script por sección, en paralelo (recomendado)», «Sí, etiquetar el log del contenedor (recomendado)».
+L3. Nota de alcance: separar logs y scripts cruza cliente, servidor, HTML, CSS y pruebas; son tres unidades de trabajo reviewables por separado.
+L4. T1: los mensajes por página del motor ahora llevan el nombre de la sección (`[Sección 2] petición fallida: ...`), con el nombre saneado para que no pueda inyectar saltos de línea en el log. GREEN 26/26 en `test/camoufox-engine.test.js`.
+L5. T2: el registro dejó de ser el DOM y pasó a ser un almacén con una entrada por línea (sesión, mensaje, tipo, hora). La vista muestra la sección activa y el interruptor `todas` muestra todas; el badge cuenta los errores de lo que se está viendo; el refresco periódico no reconstruye el registro (el operador puede estar leyéndolo). Las entradas de un script quedan en su sección. GREEN 55/55.
+L6. T3: cada sección tiene su estado de script (contenido, archivo, corriendo, estado, progreso) y su propio parser, creado con `pyrock.forSession(id)` para que sus comandos vayan a su sección. El editor intercambia al cambiar de sección y dos scripts corren a la vez. El mensaje de refusal pasó de «Ya hay un script ejecutándose» a «Ya hay un script ejecutándose en esta sección». GREEN con la prueba nueva.
+L7. T5 (pedido del usuario, verbatim: «ah y otra cosa quitale el limite que tiene de secciones pues ahora me detiene no me deja hacer mas de 5»): `MAX_SESSIONS` ya no es un tope por defecto. Sin la variable no hay límite y la API responde `max: 0`; con un número, ese es el tope. Se retiró el recorte 1–10 que el servidor y el gestor aplicaban. El botón «Nueva sección» solo se deshabilita cuando hay un tope explícito. GREEN con `test/sessions-no-limit.test.js` (8 secciones abiertas a la vez).
