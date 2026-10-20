@@ -27,7 +27,7 @@ test('the hybrid mode is opt in and its settings are validated', () => {
     assert.equal(isHybridMode({ PYROCK_PROXY_MODE: ' Hybrid ' }), true);
     assert.equal(isHybridMode({ PYROCK_PROXY_MODE: 'off' }), false);
     assert.deepEqual(readNetworkConfig({ PYROCK_PROXY_MODE: 'hybrid' }), {
-        enabled: true, freeDeadlineMs: 60000, poolUrl: 'http://127.0.0.1:8899', poolPassword: ''
+        enabled: true, freeDeadlineMs: 120000, poolUrl: 'http://127.0.0.1:8899', poolPassword: ''
     });
     const custom = readNetworkConfig({
         PYROCK_PROXY_MODE: 'hybrid', PYROCK_FREE_SEARCH_TIMEOUT_MS: '15000',

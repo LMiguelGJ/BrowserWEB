@@ -11,7 +11,9 @@ function isHybridMode(env = process.env) {
 // noticed, not guessed around.
 function readNetworkConfig(env = process.env) {
     if (!isHybridMode(env)) return { enabled: false };
-    let freeDeadlineMs = 60000;
+    // The deadline has to cover the pool warming up (its first run takes about
+    // half a minute) and still leave time to measure candidates.
+    let freeDeadlineMs = 120000;
     const rawDeadline = env.PYROCK_FREE_SEARCH_TIMEOUT_MS;
     if (rawDeadline !== undefined && rawDeadline !== '') {
         const value = /^\d+$/.test(rawDeadline) ? Number(rawDeadline) : NaN;

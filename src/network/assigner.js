@@ -34,7 +34,7 @@ function blamesProxy(error) {
 function createAssigner({
     pool, fallback, reservations, probe,
     now = Date.now, freeDeadlineMs = 60000, fallbackDeadlineMs = 30000,
-    probeTimeoutMs = 12000, poolTimeoutMs = 5000, maxConcurrentProbes = 2,
+    probeTimeoutMs = 6000, poolTimeoutMs = 5000, maxConcurrentProbes = 2,
     poolRetryMs = 2000, wait = ms => new Promise(resolve => setTimeout(resolve, ms))
 }) {
     const limit = createLimiter(maxConcurrentProbes);

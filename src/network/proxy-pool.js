@@ -85,6 +85,16 @@ function createPoolClient({ baseUrl, password = '', fetchImpl = fetch, timeoutMs
                 if (key === 'total' || key === 'count') continue;
                 byType[key] = value;
             }
+            // The pool may answer with the totals grouped (by type, by country):
+            // the numbers inside the first group are the ones by type.
+            for (const value of Object.values(body)) {
+                if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+                const inside = Object.entries(value).filter(([, item]) => typeof item === 'number' && Number.isFinite(item));
+                if (inside.length && !Object.keys(byType).length) {
+                    for (const [type, amount] of inside) byType[type] = amount;
+                    break;
+                }
+            }
             const total = explicit ?? Object.values(byType).reduce((sum, value) => sum + value, 0);
             if (!Number.isFinite(total) || total <= 0) return null;
             return { total, byType };
