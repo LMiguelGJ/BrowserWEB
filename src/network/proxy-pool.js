@@ -20,6 +20,17 @@ const SCHEMES = new Set(['http:', 'socks5:', 'socks4:']);
 // a number of exits.
 const COUNTER_KEY = /uptime|sticky|second|request|failure|error|byte|connection|counter|traffic|latency|elapsed|used|free_/i;
 const TOTAL_KEYS = ['total', 'count', 'size', 'available', 'proxies'];
+// The breakdown is only useful by protocol: the rest of the numbers the pool
+// reports (uptime, requests, revived) are counters, not exits.
+const PROTOCOL_KEY = /^(http|https|socks4|socks5)$/i;
+
+function protocolsOnly(numbers) {
+    const byType = {};
+    for (const [key, amount] of Object.entries(numbers)) {
+        if (PROTOCOL_KEY.test(key)) byType[key] = amount;
+    }
+    return byType;
+}
 
 function readInventory(body) {
     if (!body || typeof body !== 'object') return null;
@@ -34,7 +45,7 @@ function readInventory(body) {
             byType[key] = amount;
         }
         const total = groupTotal ? value[groupTotal] : Object.values(byType).reduce((sum, amount) => sum + amount, 0);
-        if (Number.isFinite(total) && total > 0) return { total, byType };
+        if (Number.isFinite(total) && total > 0) return { total, byType: protocolsOnly(byType) };
     }
     // A flat answer: the numbers that are not counters are the types.
     const flat = {};
@@ -48,10 +59,11 @@ function readInventory(body) {
     if (totalKey) delete byType[totalKey];
     const total = totalKey ? body[totalKey] : Object.values(byType).reduce((sum, amount) => sum + amount, 0);
     if (!Number.isFinite(total) || total <= 0) return null;
-    return { total, byType };
+    return { total, byType: protocolsOnly(byType) };
 }
 
-function parseCandidate(body) {    let url;
+function parseCandidate(body) {
+    let url;
     try { url = new URL(body?.url); } catch { return { status: 'invalid', reason: 'malformed' }; }
     const endpoint = typeof body?.proxy === 'string' ? body.proxy : `${url.hostname}:${url.port}`;
     const reject = reason => ({ status: 'invalid', reason, endpoint });
