@@ -325,6 +325,21 @@ document.addEventListener('keydown', (event) => {
 // frames vienen de screencast o del sondeo de capturas.
 let lastSectionUrl = '';
 let lastListSignature = '';
+// La página de arranque la publica el servidor; el cliente no inventa ninguna.
+let startPageUrl = '';
+// Página heredada por una sección nueva mientras todavía carga (el servidor la
+// reporta en blanco hasta entonces) y texto de teclado de cada sección.
+const pendingUrls = new Map();
+const typedTexts = new Map();
+
+function isBlankUrl(url) { return !url || url === 'about:blank'; }
+
+// Lo que muestra el campo de Navegación: la URL real de la sección, o mientras
+// carga la heredada y, en su defecto, la página de arranque. Nunca about:blank.
+function displayUrl(section) {
+    if (!isBlankUrl(section.url)) { pendingUrls.delete(section.id); return section.url; }
+    return pendingUrls.get(section.id) || startPageUrl;
+}
 
 function showPreviewMode(mode) {
     const element = document.getElementById('previewMode');
@@ -336,7 +351,7 @@ function showPreviewMode(mode) {
 
 function applySectionState(section) {
     if (!section) return;
-    const url = section.url || '';
+    const url = isBlankUrl(section.url) ? '' : section.url;
     if (url && url !== lastSectionUrl) {
         const host = (() => { try { return new URL(url).hostname; } catch { return ''; } })();
         if (lastSectionUrl) addLog(`Se siguió una pestaña nueva: ${host}`, 'info');
@@ -344,7 +359,8 @@ function applySectionState(section) {
     }
     const field = document.getElementById('urlInput');
     // Lo que el operador está tipeando no se pisa.
-    if (field && url && url !== field.value && document.activeElement !== field) field.value = url;
+    const shown = displayUrl(section);
+    if (field && shown && shown !== field.value && document.activeElement !== field) field.value = shown;
     if (section.previewMode) showPreviewMode(section.previewMode);
     if (section.diagnosis) showDiagnosis(section.diagnosis);
 }
@@ -430,7 +446,11 @@ async function sendClick() {
 }
 
 async function sendType() {
-    const text = document.getElementById('typeText').value || 'hola';
+    const text = document.getElementById('typeText').value;
+    if (!text) {
+        addLog('Escribe el texto a enviar', 'error');
+        return;
+    }
 
     if (pyrock && pyrock.isConnected) {
         try {
@@ -588,6 +608,7 @@ async function refreshSessions() {
     if (!pyrock || !pyrock.isConnected || typeof pyrock.listSessions !== 'function') return;
     const result = await pyrock.listSessions();
     sessionRecords = result.sessions || []; sessionMaximum = result.max ?? 0;
+    if (result.startUrl) startPageUrl = result.startUrl;
     const deckBus = document.getElementById('deckBus');
     if (deckBus) deckBus.textContent = `PVW → PGM · ${sessionRecords.find(s => s.id === activeSessionId)?.name || '—'}`;
     const list = document.getElementById('sessionList');
@@ -651,6 +672,9 @@ function activateSession(section) {
     // se guarda en la sección que se deja y se carga el de la que se entra.
     const previousId = activeSessionId;
     if (previousId) scriptState(previousId).content = scriptEditor.value;
+    const typeField = document.getElementById('typeText');
+    if (previousId) typedTexts.set(previousId, typeField.value);
+    if (typedTexts.has(section.id)) typeField.value = typedTexts.get(section.id);
     activeSessionId = section.id; localStorage.setItem('pyrock.activeSession', section.id);
     // El registro sigue a la sección activa.
     renderLog();
@@ -659,8 +683,24 @@ function activateSession(section) {
     pyrock.switchSession(section.id); pendingFrameRender = false; queuedManualScreenshot = null;
     preview.style.display = 'none'; loadingText.style.display = 'block'; loadingText.textContent = 'Cargando sección…';
     const field = document.getElementById('urlInput');
-    if (document.activeElement !== field) field.value = section.url || '';
+    if (document.activeElement !== field) field.value = displayUrl(section);
     refreshSessions();
+}
+// La sección nueva hereda de la activa lo que el operador tiene en Navegación
+// y en Control de Teclado, y navega a esa página. El texto solo se copia al
+// campo: no se escribe en la página. Una URL en blanco no se hereda: ahí manda
+// la página de arranque que abre el servidor.
+async function createInheritingSection(name) {
+    const inheritedUrl = document.getElementById('urlInput').value.trim();
+    const inheritedText = document.getElementById('typeText').value;
+    const result = await pyrock.createSession(name);
+    const section = result.session;
+    const inherits = /^https?:\/\//i.test(inheritedUrl);
+    if (inherits) pendingUrls.set(section.id, inheritedUrl);
+    typedTexts.set(section.id, inheritedText);
+    await refreshSessions();
+    activateSession(section);
+    if (inherits) await navigate(inheritedUrl);
 }
 async function addSessionInline() {
     const list = document.getElementById('sessionList'); if (list.querySelector('input')) return;
@@ -668,7 +708,7 @@ async function addSessionInline() {
     // Llega pre-cargado con el nombre siguiente; queda seleccionado para editar o reemplazar.
     input.value = `Sección ${sessionRecords.length + 1}`;
     li.append(input); list.prepend(li); const cancel = () => li.remove();
-    input.addEventListener('keydown', async e => { if (e.key === 'Escape') cancel(); if (e.key === 'Enter') { try { const result = await pyrock.createSession(input.value.trim() || undefined); await refreshSessions(); activateSession(result.session); } catch (error) { addLog(error.message, 'error'); } } });
+    input.addEventListener('keydown', async e => { if (e.key === 'Escape') cancel(); if (e.key === 'Enter') { try { await createInheritingSection(input.value.trim() || undefined); } catch (error) { addLog(error.message, 'error'); } } });
     input.addEventListener('blur', cancel); input.focus(); if (typeof input.select === 'function') input.select();
 }
 document.getElementById('sessionAdd').addEventListener('click', addSessionInline);

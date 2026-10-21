@@ -122,7 +122,8 @@ docker run --rm -p 3000:3000 --env-file .env -v pyrock-state:/app/state pyrock
 - La sección **sigue las pestañas que abre la web**: si un sitio abre un enlace en otra pestaña (por ejemplo, un link de sesión), la sección pasa a previsualizar esa pestaña en lugar de quedarse en la que la abrió
 
 1. **Navegación**
-   - Cada sección nueva abre en `https://browser.lol/` (o en `PYROCK_START_URL`), no en una pestaña vacía
+   - La primera sección abre en `https://browser.lol/` (o en `PYROCK_START_URL`), no en una pestaña vacía. El servidor publica esa página y el campo la muestra: nunca verás `about:blank`
+   - **Una sección nueva hereda** de la activa lo que tengas en Navegación y en Control de Teclado y navega a esa página; sin nada que heredar abre en la página de arranque
    - Ingresa una URL en el campo de texto
    - Haz clic en "Navegar" para ir a la página
 
@@ -131,7 +132,7 @@ docker run --rm -p 3000:3000 --env-file .env -v pyrock-state:/app/state pyrock
    - Los clics se envían al navegador controlado
 
 3. **Control de Teclado**
-   - Escribe texto en el campo correspondiente
+   - Escribe texto en el campo correspondiente (arranca vacío; con el campo vacío no se envía nada)
    - Presiona teclas especiales (Enter, Tab, Escape)
    - Usa la cruz de flechas (↑ ← ↓ →) para mover el cursor o desplazarte
 

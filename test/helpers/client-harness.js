@@ -28,7 +28,7 @@ function createHarness(serverUrl = 'http://localhost:3000', fetchImpl) {
   return { client, requests, sockets, timers, timeouts:timers, intervals };
 }
 
-function createScriptHarness({ sessions = [{ id: 's1', name: 'One', url: 'https://one.test' }], defaultId, max, storedId = null, onExecute, network } = {}) {
+function createScriptHarness({ sessions = [{ id: 's1', name: 'One', url: 'https://one.test' }], defaultId, max, storedId = null, onExecute, network, startUrl } = {}) {
   const elements = new Map(), listeners = new Map(), local = new Map(storedId ? [['pyrock.activeSession', storedId]] : []), operations = [], timers = [], clicks = [], presses = [], requests = [], requestCalls = [];
   let client, options;
   function element(tag = 'div') {
@@ -56,10 +56,12 @@ function createScriptHarness({ sessions = [{ id: 's1', name: 'One', url: 'https:
     async connect(){this.isConnected=true;return true;} disconnect(){this.isConnected=false;}
     switchSession(id){operations.push(['switch',id]);this.sessionId=id;}
     forSession(id){operations.push(['bind',id]);return {sessionId:id, marker:id};}
-    async listSessions(){return {sessions: sessions.slice(), default:defaultId||sessions[0]?.id, max:max||5};}
+    async listSessions(){return {sessions: sessions.slice(), default:defaultId||sessions[0]?.id, max:max||5, startUrl};}
     async createSession(name){operations.push(['create',name]);const s={id:`s${sessions.length+1}`,name:name||'Default',url:''};sessions.push(s);return {session:s};}
     async closeSession(id){operations.push(['close',id]);sessions.splice(sessions.findIndex(s=>s.id===id),1);}
     async initBrowser(){operations.push(['restart',this.sessionId]);}
+    async navigate(url){operations.push(['navigate',this.sessionId,url]);return {};}
+    async type(text){operations.push(['type',this.sessionId,text]);}
     async click(x,y){clicks.push({x,y});operations.push(['click',this.sessionId,x,y]);}
     async pressKey(key){presses.push(key);operations.push(['key',this.sessionId,key]);}
     async makeRequest(path, method, data, options){requests.push(path);requestCalls.push({path,method,data,options});return networkResponse(path);}
@@ -72,7 +74,7 @@ function createScriptHarness({ sessions = [{ id: 's1', name: 'One', url: 'https:
   const context={document,window,localStorage:{getItem:k=>local.get(k)||null,setItem:(k,v)=>local.set(k,v)},PyRockHTTP:FakeClient,PyRockScriptParser:FakeParser,console:{log(){},error(){}},Date,URL,
     setTimeout(fn,delay){const t={fn,delay,cancelled:false};timers.push(t);return t;},clearTimeout(t){if(t)t.cancelled=true;},
     setInterval(fn,delay){const t={fn,delay,cancelled:false};intervalTimers.push(t);return t;},clearInterval(t){if(t)t.cancelled=true;},setImmediate};
-  vm.runInNewContext(`${fs.readFileSync('public/script.js','utf8')}\nwindow.__testApi={refreshSessions,activateSession,addSessionInline,executeScript,initBrowser,showDiagnosis,showPreviewMode,renderNetwork,openNetworkPanel,togglePanel};`,context,{filename:'public/script.js'});
+  vm.runInNewContext(`${fs.readFileSync('public/script.js','utf8')}\nwindow.__testApi={refreshSessions,activateSession,addSessionInline,executeScript,initBrowser,sendType,showDiagnosis,showPreviewMode,renderNetwork,openNetworkPanel,togglePanel};`,context,{filename:'public/script.js'});
   return {document,elements,window,context,operations,timers,intervals:intervalTimers,local,clicks,presses,requests,requestCalls, get client(){return client;},get options(){return options;}, async load(){await window.dispatch('load');return options;}, api:()=>window.__testApi};
 }
 module.exports={createHarness,createScriptHarness};

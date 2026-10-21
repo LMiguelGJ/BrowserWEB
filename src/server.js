@@ -470,7 +470,7 @@ function apiError(res, error) {
     res.status(status).json({ success: false, error: error.sectionMissing ? 'Sección no encontrada' : error.message });
 }
 function routeSection(req) { return getSection(req.method === 'GET' ? req.query.session : req.body?.session); }
-app.get('/api/sessions', (_req, res) => res.json({ success: true, sessions: sessions.list(), default: sessions.getDefault()?.id || null, max: MAX_SESSIONS }));
+app.get('/api/sessions', (_req, res) => res.json({ success: true, sessions: sessions.list(), default: sessions.getDefault()?.id || null, max: MAX_SESSIONS, startUrl: startUrl() }));
 
 // Última IP medida por sección: id de sección -> { ip, at, history: [{ ip, at }] }
 const measuredIps = new Map();
@@ -610,7 +610,7 @@ app.delete('/api/sessions/:id', async (req, res) => {
     try { await serializeMutation(() => sessions.close(req.params.id)); res.json({ success: true }); } catch (error) { apiError(res, error); }
 });
 app.get('/api/status', (req, res) => {
-    try { const section = routeSection(req); res.json({ success: true, browser: browser ? 'connected' : 'disconnected', engine: engine.name, browserReady: !!section.page && section.state === 'ready', lastAction, timestamp: new Date().toISOString() }); }
+    try { const section = routeSection(req); res.json({ success: true, browser: browser ? 'connected' : 'disconnected', engine: engine.name, browserReady: !!section.page && section.state === 'ready', startUrl: startUrl(), lastAction, timestamp: new Date().toISOString() }); }
     catch (error) { apiError(res, error); }
 });
 app.post('/api/navigate', async (req, res) => {

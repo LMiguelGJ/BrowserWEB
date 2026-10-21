@@ -50,4 +50,8 @@ test('a new section opens on the start page instead of about:blank', async t => 
     const navigations = state.pages.flatMap(page => page.calls.filter(call => call[0] === 'navigate').map(call => call[1]));
     assert.ok(navigations.includes('https://browser.lol/'), 'the section opened on the start page');
     assert.equal(navigations.includes('about:blank'), false, 'the page is not left blank');
+    // The server publishes the start page, so the client never has to invent one.
+    assert.equal(sessions.startUrl, 'https://browser.lol/', 'the sections listing carries the start page');
+    const status = await (await fetch(`${base}/api/status`)).json();
+    assert.equal(status.startUrl, 'https://browser.lol/', 'the status carries the start page');
 });
