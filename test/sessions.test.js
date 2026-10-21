@@ -212,3 +212,65 @@ test('session manager validates names and preserves identity across restart', as
     assert.notEqual(restarted.page, originalPage);
     await manager.closeAll();
 });
+
+test('a context that fails to close once is retried and leaves no recorded failure', async () => {
+    const attempts = [];
+    const warnings = [];
+    const manager = createSessionManager({
+        openPage: async section => ({ context: section.id, page: {} }),
+        closeContext: async context => {
+            attempts.push(context);
+            if (attempts.length === 1) throw new Error('EACCES: context busy');
+        },
+        createController: () => ({ close: async () => {} }),
+        logger: { info() {}, warn: message => warnings.push(message) }
+    });
+    await manager.create();
+    const second = await manager.create();
+    await manager.close('s1');
+    assert.deepEqual(attempts, ['s1', 's1'], 'the close is retried once');
+    assert.deepEqual(warnings, [], 'a resolved retry is not a failure');
+    assert.deepEqual(manager.closeFailures(), []);
+    assert.equal(manager.get('s1'), null);
+    assert.equal(manager.get(second.id).id, second.id);
+    await manager.closeAll();
+});
+
+test('a context that never closes still closes the section and records the failure', async () => {
+    const attempts = [];
+    const warnings = [];
+    const manager = createSessionManager({
+        openPage: async section => ({ context: section.id, page: {} }),
+        closeContext: async context => { attempts.push(context); throw new Error('EACCES: context busy'); },
+        createController: () => ({ close: async () => {} }),
+        logger: { info() {}, warn: message => warnings.push(message) }
+    });
+    await manager.create();
+    const second = await manager.create();
+    await manager.close('s1');
+    assert.deepEqual(attempts, ['s1', 's1'], 'the close is attempted twice');
+    assert.equal(manager.get('s1'), null, 'the section is gone for the operator');
+    const failures = manager.closeFailures();
+    assert.equal(failures.length, 1);
+    assert.equal(failures[0].id, 's1');
+    assert.match(failures[0].message, /EACCES: context busy/);
+    assert.ok(warnings.some(line => /s1/.test(line) && /EACCES/.test(line)), 'the failure is logged, not swallowed');
+    assert.equal(manager.get(second.id).id, second.id);
+    await manager.closeAll();
+});
+
+test('a context already closed by the browser is not a failure', async () => {
+    const warnings = [];
+    const manager = createSessionManager({
+        openPage: async section => ({ context: section.id, page: {} }),
+        closeContext: async () => { throw new Error('Target page, context or browser has been closed'); },
+        createController: () => ({ close: async () => {} }),
+        logger: { info() {}, warn: message => warnings.push(message) }
+    });
+    await manager.create();
+    await manager.create();
+    await manager.close('s1');
+    assert.deepEqual(manager.closeFailures(), []);
+    assert.deepEqual(warnings, []);
+    await manager.closeAll();
+});

@@ -1,6 +1,8 @@
 'use strict';
 
-function createSessionManager({ openPage, closeContext, createController, onClosed, onReady, maxSessions = 0 }) {
+const { createContextCloser } = require('./network/close-context');
+
+function createSessionManager({ openPage, closeContext, createController, onClosed, onReady, maxSessions = 0, logger = null }) {
     if (typeof openPage !== 'function' || typeof closeContext !== 'function' || typeof createController !== 'function') {
         throw new TypeError('openPage, closeContext and createController are required');
     }
@@ -25,14 +27,21 @@ function createSessionManager({ openPage, closeContext, createController, onClos
     });
     const get = id => sessions.get(id) || null;
     const defaultSection = () => sessions.values().next().value || null;
+    // A context that could not be released keeps consuming browser memory with
+    // nobody watching it: the section is already gone from the map, so the
+    // failure is kept here instead of being swallowed.
+    const closer = createContextCloser({ close: closeContext, logger });
+    async function closeSectionContext(section) {
+        const outcome = await closer.closeOnce(section.context, section.id);
+        if (outcome.closed) section.context = null;
+        return outcome;
+    }
     async function dispose(section, { closeController = true } = {}) {
         try {
             if (closeController && section.controller) await section.controller.close();
             else if (section.controller?.setUnavailable) await section.controller.setUnavailable('Browser is restarting');
         } finally {
-            if (section.context) {
-                try { await closeContext(section.context); } catch { /* Browser shutdown may already have closed the context. */ }
-            }
+            await closeSectionContext(section);
         }
     }
     // Adopts a page the site opened itself (a session link, a popup): the
@@ -158,6 +167,12 @@ function createSessionManager({ openPage, closeContext, createController, onClos
                 if (section.controller?.setUnavailable) section.controller.setUnavailable('Browser disconnected').catch(() => {});
             }
         },
+        // A copy: the diagnostics endpoint reads it without being able to
+        // mutate the registry.
+        closeFailures: () => closer.failures().map(({ owner, ...rest }) => ({ id: owner, ...rest })),
+        // How many sections still hold a browser context: every one of them is
+        // browser memory the diagnostics endpoint has to account for.
+        liveContexts: () => [...sessions.values()].filter(section => section.context).length,
         async closeAll() {
             return serialize(async () => {
                 closed = true;
