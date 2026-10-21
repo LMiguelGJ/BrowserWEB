@@ -20,7 +20,7 @@ T1 | S5 | `src/sessions.js`: cierre con reintento, log y registro `closeFailures
 T2 | S6 | `src/network-ip.js`: abortar la medición abandonada y esperar al trabajo antes de cerrar la página | tests primero en `test/network-hybrid.test.js`
 T3 | S7 | `src/server.js`: cierre del contexto de sondeo con reintento + contadores + `GET /api/diagnostics` | tests primero en `test/runtime-packaging.test.js` (un test de servidor por archivo)
 T4 | S8 | `public/index.html` + `public/script.js`: memoria real y aviso de contexto no liberado en el panel Red | tests primero en `test/preview-client.test.js`
-T5 | S1-S8 | suite completa, documentación, commit, push y deploy con verificación de RAM antes/después | —
+T5 | S1-S8 | suite completa, documentación, commit, push y deploy con verificación de RAM antes/después | deploy `f31b64a` en vivo; suite 231/231; pendiente la medición de RAM y el deploy del lector corregido |
 
 ## Log
 
@@ -32,4 +32,6 @@ L4. Evidencia de la Fase 1 (leída del código, no supuesto):
 - Defecto 2, `src/network-ip.js:38-50` + `src/server.js:80-86`: `measureExitIp` compite `work` contra un temporizador con `Promise.race`; al ganar el temporizador, el `finally` cierra la página con `page.goto` en vuelo y `work` sigue intentando los servicios siguientes. `probeProxy` cierra el contexto con otro `catch` vacío. Con `MAX_EXAMINED = 200` y 120 s de plazo por sección, se repite cientos de veces por hora.
 - Medición: no existe `process.memoryUsage()` ni lectura de `/proc` en `src/`, `public/` ni `ops/`.
 L5. Señal del usuario (imagen de Dokploy Monitoring): memoria 4.94 GiB de 7.751 GiB, subida monótona desde ~4 GB sin bajar; CPU 292%.
-L6. Advertencia que se conserva durante la ejecución: si Firefox no devuelve la RSS al sistema tras `context.close()`, el número no bajará aunque el contexto muera bien. `GET /api/diagnostics` es lo que lo decide con dos lecturas; si es así, la solución real (reiniciar el proceso de Camoufox sin secciones) queda fuera del alcance pedido en S3 y seFrozenza para el usuario.
+L6. Advertencia que se conserva durante la ejecución: si Firefox no devuelve la RSS al sistema tras `context.close()`, el número no bajará aunque el contexto muera bien. `GET /api/diagnostics` es lo que lo decide con dos lecturas; si es así, la solución real (reiniciar el proceso de Camoufox sin secciones) queda fuera del alcance pedido en S3 y se congela para el usuario.
+L7. Corrección propia durante la verificación: el primer lector de `/proc` listaba solo los hijos del proceso de Node, así que `proxy-scraper` (que corre bajo Supervisor, no bajo Node) **nunca** aparecía y el panel no podía dar la memoria del pool como se había documentado. Ahora recorre todos los procesos legibles, salta el propio Node para no contarlo dos veces y los clasifica (`camoufox`, `proxy-scraper`, `xvfb`, `supervisor`, `node`, `other`), con un agregado en MB por tipo. Pruebas: `test/diagnostics.test.js` con un `/proc` falso.
+L8. Deuda honesta que queda para el usuario, no resuelta por código: la credencial de DataImpulse y la clave de la API de Dokploy siguen sin rotar, y las IP gratuitas del pool hacen que browser.lol muestre captcha por reputación de IP.

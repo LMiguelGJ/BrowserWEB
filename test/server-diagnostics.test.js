@@ -25,6 +25,7 @@ test('the diagnostics endpoint reports real memory without exposing credentials'
     assert.ok(body.node.rss > 0, 'the node process reports its own memory');
     assert.ok(Number.isInteger(body.node.heapUsed));
     assert.equal(Array.isArray(body.processes) || body.processes === null, true, 'child processes are listed when /proc exists');
+    assert.equal(body.byName === null || typeof body.byName === 'object', true, 'the report aggregates by process kind');
     assert.ok(body.sections.total >= 1, 'the open sections are counted');
     assert.ok(body.sections.contexts >= 1, 'the live browser contexts are counted');
     assert.deepEqual(body.probes, { created: body.probes.created, closed: body.probes.closed, failed: body.probes.failed });

@@ -637,6 +637,7 @@ app.get('/api/diagnostics', (_req, res) => {
             success: true,
             node: memory.node,
             processes: memory.processes,
+            byName: memory.byName,
             total: memory.total,
             browser: browser ? 'connected' : 'disconnected',
             sections: { total: sessions.list().length, contexts: sessions.liveContexts(), closeFailures: sessions.closeFailures() },
