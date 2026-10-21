@@ -13,6 +13,8 @@ const { generateHumanPath, typeDelays } = require('./humanize');
 const { createCamoufoxEngine, diagnosePage, sectionProxy, parseProxyTemplate, stickyBase, buildProxyUrl, proxyPort, proxyLabel } = require('./engines/camoufox');
 const { readNetworkConfig, isHybridMode } = require('./network/config');
 const { createNetworkManager } = require('./network/manager');
+const { createContextCloser } = require('./network/close-context');
+const { memoryReport } = require('./diagnostics');
 const { captureSnapshot, mergeSnapshots, restoreSnapshot } = require('./network/snapshot');
 const PORT = process.env.PORT || 3000;
 // Camoufox (anti-detect Firefox via Playwright) is the only engine.
@@ -77,11 +79,22 @@ function ensureNetwork() {
 }
 // Measures the real exit of a candidate in the browser itself, in a throwaway
 // context: that is the address a site would see, whatever the pool claims.
+// The throwaway context is the hottest allocation in the process (one per
+// measured candidate), so it is closed with the same retry as a section and
+// counted for the diagnostics endpoint.
+const probeCloser = createContextCloser({ close: context => engine.closeContext(context), logger: log });
+const probeStats = { created: 0, closed: 0, failed: 0 };
 async function probeProxy(proxy, { timeoutMs }) {
     const activeBrowser = await ensureBrowser();
     const context = await activeBrowser.newContext({ proxy });
+    probeStats.created++;
     try { return await measureExitIp(context, { timeoutMs }); }
-    finally { try { await context.close(); } catch { /* the probe is over */ } }
+    finally {
+        // The endpoint identifies which candidate leaked its context. It is
+        // the host and port only: the credentials never leave the proxy config.
+        const outcome = await probeCloser.closeOnce(context, `sondeo ${proxy.server || 'sin endpoint'}`);
+        if (outcome.closed) probeStats.closed++; else probeStats.failed++;
+    }
 }
 function noExit(result) {
     const why = [result.reason, result.freeReason].filter(Boolean).join(' / ');
@@ -267,7 +280,8 @@ const sessions = createSessionManager({
         void openStartPage(url, section);
     },
     // A closed section gives back its exit and stops any recovery in progress.
-    onClosed: section => { stopRecovery(section.id); network?.forget(section.id); }
+    onClosed: section => { stopRecovery(section.id); network?.forget(section.id); },
+    logger: log
 });
 async function initBrowser() {
     try {
@@ -612,6 +626,24 @@ app.delete('/api/sessions/:id', async (req, res) => {
 app.get('/api/status', (req, res) => {
     try { const section = routeSection(req); res.json({ success: true, browser: browser ? 'connected' : 'disconnected', engine: engine.name, browserReady: !!section.page && section.state === 'ready', startUrl: startUrl(), lastAction, timestamp: new Date().toISOString() }); }
     catch (error) { apiError(res, error); }
+});
+// Read-only memory report. The node process cannot see the browser it launched,
+// so the interesting number is the resident size of its children. Nothing that
+// identifies an account is reported: no command line, no credentials.
+app.get('/api/diagnostics', (_req, res) => {
+    try {
+        const memory = memoryReport();
+        res.json({
+            success: true,
+            node: memory.node,
+            processes: memory.processes,
+            total: memory.total,
+            browser: browser ? 'connected' : 'disconnected',
+            sections: { total: sessions.list().length, contexts: sessions.liveContexts(), closeFailures: sessions.closeFailures() },
+            probes: { ...probeStats },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) { apiError(res, error); }
 });
 app.post('/api/navigate', async (req, res) => {
     try { const section = routeSection(req); const { url } = req.body; if (!url) return res.status(400).json({ success: false, error: 'URL requerida' }); const result = await navigateToUrl(url, section); lastAction = { type: 'navigate', result, timestamp: Date.now() }; res.json(result); }
