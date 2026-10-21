@@ -33,14 +33,20 @@ function blamesProxy(error) {
 
 function createAssigner({
     pool, fallback, reservations, probe,
-    now = Date.now, freeDeadlineMs = 60000, fallbackDeadlineMs = 30000,
-    probeTimeoutMs = 6000, poolTimeoutMs = 5000, maxConcurrentProbes = 2,
+    now = Date.now, freeDeadlineMs = 60000, fallbackDeadlineMs = 45000,
+    probeTimeoutMs = 6000, fallbackProbeTimeoutMs = 15000, poolTimeoutMs = 5000,
+    maxConcurrentProbes = 2, maxConcurrentFallbackProbes = 2,
     poolRetryMs = 2000, wait = ms => new Promise(resolve => setTimeout(resolve, ms))
 }) {
     const limit = createLimiter(maxConcurrentProbes);
+    // The paid exit has its own slots. Free searches keep the shared ones busy
+    // for minutes with candidates that never answer; the paid list is short and
+    // known, so it must not wait in that line (it used to run out of time
+    // before being measured at all).
+    const fallbackLimit = createLimiter(maxConcurrentFallbackProbes);
 
-    async function measure(proxy, timeoutMs) {
-        return limit(async () => {
+    async function measure(proxy, timeoutMs, limiter = limit) {
+        return limiter(async () => {
             const ip = await probe(proxy, { timeoutMs });
             return typeof ip === 'string' ? ip.trim() : '';
         });
@@ -98,7 +104,7 @@ function createAssigner({
             const remaining = deadline - now();
             if (remaining <= 0) break;
             let ip;
-            try { ip = await measure(candidate, Math.min(probeTimeoutMs, remaining)); }
+            try { ip = await measure(candidate, Math.min(fallbackProbeTimeoutMs, remaining), fallbackLimit); }
             catch { continue; }
             if (isCancelled()) return { cancelled: true };
             if (!isPublicIp(ip)) continue;
