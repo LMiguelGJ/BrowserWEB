@@ -303,9 +303,13 @@ test('the hybrid panel polls every five seconds only while open and cancels on c
     await Promise.resolve();
     const panelTimer = h.intervals.find(timer => timer.delay === 5000);
     assert.ok(panelTimer, 'the open panel schedules a five-second refresh');
-    const before = calls.length;
+    // The tick refreshes the network status and, with it, the memory report:
+    // the count below is about the status refresh, not about every request.
+    const statusCalls = () => calls.filter(path => path === '/api/network').length;
+    const before = statusCalls();
     await panelTimer.fn();
-    assert.equal(calls.length, before + 1, 'an open panel refreshes status');
+    assert.equal(statusCalls(), before + 1, 'an open panel refreshes status');
+    assert.ok(calls.includes('/api/diagnostics'), 'the refresh carries the memory report too');
     h.document.dispatch('keydown', { key: 'Escape' });
     assert.equal(panelTimer.cancelled, true, 'closing Red clears its interval');
     const afterClose = calls.length;
@@ -327,4 +331,63 @@ test('the network panel does not measure again when every section already has an
     await h.load();
     await h.api().openNetworkPanel();
     assert.ok(!calls.includes('/api/network/measure'), 'a known IP is not measured again');
+});
+
+test('the network panel shows the real memory of the browser and the node process', async () => {
+    const h = createScriptHarness({
+        network: (path) => path === '/api/diagnostics' ? {
+            node: { rss: 300 * 1024 * 1024, heapUsed: 90 * 1024 * 1024, external: 8 * 1024 * 1024 },
+            processes: [
+                { pid: 42, name: 'camoufox', rss: 1024 * 1024 * 1024 },
+                { pid: 43, name: 'proxy-scraper', rss: 120 * 1024 * 1024 }
+            ],
+            total: 1444 * 1024 * 1024,
+            sections: { total: 2, contexts: 2, closeFailures: [] },
+            probes: { created: 10, closed: 10, failed: 0 }
+        } : { mode: 'hybrid', pool: { status: 'ok' }, fallbackConfigured: true, sections: [] }
+    });
+    await h.load();
+    await h.api().renderNetwork();
+    const text = h.elements.get('netBody').children.map(child => child.children.length
+        ? child.children.map(inner => inner.textContent).join(' ')
+        : child.textContent).join('\n');
+    assert.match(text, /MEMORIA/i);
+    assert.match(text, /camoufox 1\.00 GB/, 'the browser process is the number that matters');
+    assert.match(text, /Node 300 MB/);
+    assert.match(text, /proxy-scraper 120 MB/);
+    assert.match(text, /2 contextos vivos/);
+});
+
+test('the network panel warns when a section could not release its browser context', async () => {
+    const h = createScriptHarness({
+        network: (path) => path === '/api/diagnostics' ? {
+            node: { rss: 200 * 1024 * 1024 }, processes: [],
+            sections: { total: 2, contexts: 1, closeFailures: [{ id: 's3', message: 'EACCES: context busy', at: '2026-10-21T05:00:00.000Z' }] },
+            probes: { created: 4, closed: 4, failed: 0 }
+        } : { mode: 'hybrid', pool: { status: 'ok' }, fallbackConfigured: true, sections: [] }
+    });
+    await h.load();
+    await h.api().renderNetwork();
+    const text = h.elements.get('netBody').children.map(child => child.children.length
+        ? child.children.map(inner => inner.textContent).join(' ')
+        : child.textContent).join('\n');
+    assert.match(text, /No se liberó el contexto de s3/);
+    assert.match(text, /EACCES: context busy/);
+});
+
+test('the network panel still reads when the memory report is unavailable', async () => {
+    const h = createScriptHarness({
+        network: (path) => {
+            if (path === '/api/diagnostics') throw new Error('diagnostics unavailable');
+            return { mode: 'hybrid', pool: { status: 'ok' }, fallbackConfigured: true, sections: [] };
+        }
+    });
+    await h.load();
+    await h.api().renderNetwork();
+    const text = h.elements.get('netBody').children.map(child => child.children.length
+        ? child.children.map(inner => inner.textContent).join(' ')
+        : child.textContent).join('\n');
+    assert.match(text, /híbrido/i, 'the network rows survive a missing memory report');
+    assert.doesNotMatch(text, /MEMORIA/i);
+    assert.doesNotMatch(text, /diagnostics unavailable/, 'a missing report is not an error the operator has to read');
 });

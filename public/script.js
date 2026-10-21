@@ -163,6 +163,12 @@ function poolLabel(pool) {
     return pool.status;
 }
 
+function formatBytes(bytes) {
+    if (!Number.isFinite(bytes) || bytes <= 0) return '—';
+    const megabytes = bytes / (1024 * 1024);
+    return megabytes >= 1024 ? `${(megabytes / 1024).toFixed(2)} GB` : `${Math.round(megabytes)} MB`;
+}
+
 async function renderNetwork() {
     const body = document.getElementById('netBody');
     if (!body) return null;
@@ -201,6 +207,36 @@ async function renderNetwork() {
         if (hint) text.title = hint;
         line.append(key, text);
         body.append(line);
+    }
+    // La memoria que importa es la del navegador, y el proceso de Node no ve al
+    // navegador que lanzó: el informe lista sus procesos hijo con su RSS. Si
+    // el informe no está disponible, el panel sigue mostrando la red igual.
+    let memory = null;
+    try { memory = await pyrock.makeRequest('/api/diagnostics'); } catch { memory = null; }
+    if (memory) {
+        const parts = [...(memory.processes || []).map(item => `${item.name} ${formatBytes(item.rss)}`)];
+        parts.push(`Node ${formatBytes(memory.node?.rss)}`);
+        const contexts = memory.sections?.contexts ?? 0;
+        parts.push(`${contexts} contextos vivos`);
+        const line = document.createElement('div');
+        line.className = 'net-row';
+        const key = document.createElement('span');
+        key.className = 'net-key';
+        key.textContent = 'MEMORIA';
+        const value = document.createElement('span');
+        value.className = 'net-value';
+        value.textContent = parts.join(' · ');
+        value.title = `Sondeos: ${memory.probes?.created ?? 0} creados, ${memory.probes?.failed ?? 0} sin liberar`;
+        line.append(key, value);
+        body.append(line);
+        // Un contexto que no se pudo cerrar sigue consumiendo memoria del
+        // navegador sin que nadie lo mire: hay que decirlo en pantalla.
+        for (const failure of memory.sections?.closeFailures || []) {
+            const note = document.createElement('div');
+            note.className = 'net-note';
+            note.textContent = `No se liberó el contexto de ${failure.id}: ${failure.message}`;
+            body.append(note);
+        }
     }
     const heading = document.createElement('div');
     heading.className = 'net-heading';
