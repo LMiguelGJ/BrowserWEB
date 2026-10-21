@@ -4,11 +4,35 @@ const { isIP } = require('node:net');
 const probePages = new WeakSet();
 const IP_SERVICES = ['https://api.ipify.org/', 'https://ifconfig.me/ip', 'https://icanhazip.com/'];
 
+// How long a timed out measurement is given to unwind after its navigation is
+// aborted, before the probe page is closed anyway.
+const ABORT_GRACE_MS = 250;
+
+// The timed out navigation is aborted and then awaited: closing the page while
+// a goto is still in flight is what leaves dead contexts behind in the browser.
+// The grace keeps an unresponsive navigation from holding the caller.
+function settle(work, graceMs) {
+    return new Promise(resolve => {
+        let grace = null;
+        let done = false;
+        const finish = () => {
+            if (done) return;
+            done = true;
+            if (grace) clearTimeout(grace);
+            resolve();
+        };
+        grace = setTimeout(finish, Math.max(0, graceMs));
+        grace?.unref?.();
+        work.then(finish, finish);
+    });
+}
+
 // Navigate outside the site's CSP, but inside its existing proxy context.
-async function measureExitIp(context, { services = IP_SERVICES, timeoutMs = 15000 } = {}) {
+async function measureExitIp(context, { services = IP_SERVICES, timeoutMs = 15000, abortGraceMs = ABORT_GRACE_MS } = {}) {
     let probe;
     let expired = false;
     let timer;
+    const controller = new AbortController();
     const deadline = Date.now() + timeoutMs;
     const work = (async () => {
         const page = await context.newPage();
@@ -26,7 +50,8 @@ async function measureExitIp(context, { services = IP_SERVICES, timeoutMs = 1500
                     waitUntil: 'domcontentloaded',
                     // The whole remaining budget goes to this service: a slow
                     // proxy deserves the chance, and the total is the bound.
-                    timeout: Math.max(1, deadline - Date.now())
+                    timeout: Math.max(1, deadline - Date.now()),
+                    signal: controller.signal
                 });
                 if (!response?.ok()) continue;
                 const ip = (await response.text()).trim();
@@ -49,6 +74,8 @@ async function measureExitIp(context, { services = IP_SERVICES, timeoutMs = 1500
     } finally {
         expired = true;
         clearTimeout(timer);
+        controller.abort();
+        await settle(work, abortGraceMs);
         if (probe) {
             try { await probe.close(); } catch { /* Context may already be closed. */ }
         }

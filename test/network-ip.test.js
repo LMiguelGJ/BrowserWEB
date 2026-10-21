@@ -76,3 +76,36 @@ test('an internal probe never replaces the preview, even on the same origin', as
     assert.equal(closed, true);
     await context.close();
 });
+
+test('a timed out measurement aborts its navigation and does not try the next service', async () => {
+    const calls = [];
+    let closed = 0;
+    let aborted = false;
+    const context = { newPage: async () => ({
+        goto(url, options = {}) {
+            calls.push(url);
+            return new Promise((_, reject) => {
+                const fail = () => { aborted = true; reject(new Error('Navigation aborted')); };
+                if (options.signal?.aborted) return fail();
+                options.signal?.addEventListener?.('abort', fail, { once: true });
+            });
+        },
+        close: async () => { closed++; }
+    }) };
+    await assert.rejects(
+        measureExitIp(context, { services: ['https://a/', 'https://b/'], timeoutMs: 20, abortGraceMs: 200 }),
+        /timed out/
+    );
+    assert.equal(aborted, true, 'the navigation is aborted instead of left running');
+    assert.deepEqual(calls, ['https://a/'], 'the measurement stops at the aborted service');
+    assert.equal(closed, 1, 'the probe page is closed');
+});
+
+test('a measurement that ignores the abort still releases the caller', async () => {
+    let closed = 0;
+    const context = { newPage: async () => ({ goto: () => new Promise(() => {}), close: async () => { closed++; } }) };
+    const started = Date.now();
+    await assert.rejects(measureExitIp(context, { timeoutMs: 20, abortGraceMs: 50 }), /timed out/);
+    assert.ok(Date.now() - started < 2000, 'the caller is not held by an unresponsive navigation');
+    assert.equal(closed, 1, 'the probe page is closed anyway');
+});
